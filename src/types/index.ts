@@ -22,6 +22,18 @@ export interface Question {
   updatedAt: string;
 }
 
+export interface SourcePaper {
+  id: string;
+  title: string;
+  description?: string;
+  pdfUrl: string;
+  examName?: string;
+  year?: string;
+  category: string;
+  targetQuestions: number;
+  createdAt: string;
+}
+
 export interface Paper {
   id: string;
   userId: string; // phone number of author
@@ -33,6 +45,9 @@ export interface Paper {
   targetQuestions?: number;
   timeLimitMinutes?: number;
   isPublic?: boolean;
+  sourcePaperId?: string; // If this paper is digitizing an old source paper
+  sourcePdfUrl?: string;  // Direct link to the source Google Drive PDF
+  isDigitizedCompleted?: boolean;
   questions: Question[];
   createdAt: string;
   updatedAt: string;

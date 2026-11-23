@@ -21,7 +21,11 @@ import {
   BookOpen,
   Info,
   Check,
-  HelpCircle
+  HelpCircle,
+  FileDown,
+  ExternalLink,
+  Award,
+  Layers
 } from "lucide-react";
 import { BulkImportModal } from "./BulkImportModal";
 
@@ -59,6 +63,7 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
   const [lastSaved, setLastSaved] = useState<Date>(new Date());
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [isCompleted, setIsCompleted] = useState<boolean>(!!paper.isDigitizedCompleted);
 
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -68,19 +73,20 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
     if (draft && draft.length > (paper.questions?.length || 0)) {
       if (confirm(`તમારા માટે ${draft.length} પ્રશ્નોનો અગાઉનો વણસેવ કરેલો ડ્રાફ્ટ મળ્યો છે. શું તમે તેને લોડ કરવા માંગો છો?`)) {
         setQuestions(draft);
-        persistChanges(draft);
+        persistChanges(draft, isCompleted);
       }
     }
   }, [paper.id]);
 
   // Save changes to database and draft cache
-  const persistChanges = async (newQuestions: Question[]) => {
+  const persistChanges = async (newQuestions: Question[], completedState?: boolean) => {
     setSaveStatus("saving");
     saveTemporaryDraft(paper.id, newQuestions);
 
     const updated: Paper = {
       ...currentPaper,
       questions: newQuestions,
+      isDigitizedCompleted: completedState !== undefined ? completedState : isCompleted,
       updatedAt: new Date().toISOString(),
     };
 
@@ -89,6 +95,12 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
 
     setSaveStatus("saved");
     setLastSaved(new Date());
+  };
+
+  const toggleCompletedStatus = () => {
+    const nextVal = !isCompleted;
+    setIsCompleted(nextVal);
+    persistChanges(questions, nextVal);
   };
 
   // Open Form for New Question
@@ -149,7 +161,6 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
     const updatedQuestions = [...questions];
 
     if (editingIndex !== null) {
-      // Update existing
       updatedQuestions[editingIndex] = {
         ...updatedQuestions[editingIndex],
         questionText: qText.trim(),
@@ -159,7 +170,6 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
         updatedAt: new Date().toISOString(),
       };
     } else {
-      // Add new
       const newQ: Question = {
         id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         paperId: paper.id,
@@ -175,13 +185,11 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
       updatedQuestions.push(newQ);
     }
 
-    // Re-index question numbers
     const indexed = updatedQuestions.map((q, i) => ({ ...q, questionNumber: i + 1 }));
     setQuestions(indexed);
     persistChanges(indexed);
 
     if (addAnother) {
-      // Reset for next question immediately
       handleOpenNewQuestion();
     } else {
       setIsEditingQuestion(false);
@@ -270,7 +278,6 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
             <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
               <span>{currentPaper.subject || currentPaper.category}</span>
               <span>•</span>
-              {/* Auto-save status */}
               <span className="flex items-center gap-1 font-medium">
                 {saveStatus === "saving" ? (
                   <>
@@ -316,6 +323,52 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Pinned PDF Source Helper Banner (if linked to Google Drive Old Paper) */}
+      {currentPaper.sourcePdfUrl && (
+        <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl p-3.5 border border-orange-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center flex-shrink-0">
+              <FileDown className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-orange-950 flex items-center gap-1.5">
+                <span>ઓરિજિનલ PDF સોર્સ સાથે જોડાયેલ છે</span>
+                <span className="text-[10px] bg-orange-200/70 text-orange-800 px-1.5 py-0.2 rounded font-mono">
+                  Drive Link
+                </span>
+              </div>
+              <p className="text-[11px] text-orange-800 mt-0.5">
+                PDF ખોલીને એકસાથે પ્રશ્નો જોઈને અહીં ટાઈપ કે બલ્ક પેસ્ટ કરો.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <a
+              href={currentPaper.sourcePdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-orange-100/70 text-orange-900 border border-orange-300 font-bold text-xs flex items-center gap-1 shadow-sm"
+            >
+              <span>PDF ઓપન કરો</span>
+              <ExternalLink className="w-3 h-3 text-orange-600" />
+            </a>
+
+            <button
+              onClick={toggleCompletedStatus}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 transition-all ${
+                isCompleted
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "bg-orange-600 hover:bg-orange-700 text-white"
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{isCompleted ? "ડિજિટાઇઝ્ડ પૂર્ણ ✓" : "પૂર્ણ માર્ક કરો"}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Editor Form (Inline / Accordion for smooth mobile typing) */}
       {isEditingQuestion && (
@@ -581,10 +634,10 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
               <BookOpen className="w-7 h-7" />
             </div>
             <h4 className="font-bold text-slate-800 text-sm sm:text-base">
-              આ પેપરમાં હજુ કોઈ પ્રશ્ન નથી
+              આ પેપરમાં હજુ કોઈ પ્રશ્ન ડિજિટાઇઝ થયો નથી
             </h4>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
-              તમે જાતે પ્રશ્નો ટાઈપ કરી શકો છો અથવા WhatsApp/PDF માંથી એકસાથે પ્રશ્નો બલ્ક પેસ્ટ કરી શકો છો.
+              તમે જાતે પ્રશ્નો ટાઈપ કરી શકો છો અથવા PDF/WhatsApp માંથી એકસાથે પ્રશ્નો બલ્ક પેસ્ટ કરી શકો છો.
             </p>
             <div className="flex items-center justify-center gap-2">
               <button

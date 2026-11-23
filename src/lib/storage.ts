@@ -1,4 +1,4 @@
-import { Paper, UserProfile, Question } from "@/types";
+import { Paper, UserProfile, Question, SourcePaper } from "@/types";
 import { initFirebase } from "./firebase";
 import { 
   collection, 
@@ -16,6 +16,55 @@ import {
 const STORAGE_KEY_PAPERS = "mcq_master_papers";
 const STORAGE_KEY_USERS = "mcq_master_users";
 const STORAGE_KEY_CURRENT_USER = "mcq_master_current_user";
+const STORAGE_KEY_SOURCE_PAPERS = "mcq_master_source_papers";
+
+// Default Initial Source Papers provided by user (Google Drive Links)
+export const DEFAULT_SOURCE_PAPERS: SourcePaper[] = [
+  {
+    id: "source_paper_1",
+    title: "GSRTC Old Exam Paper - 1 (ઓરિજિનલ પેપર ૧)",
+    description: "આ પેપર ડાઉનલોડ કરો અને પ્રશ્નો ડિજિટલ રૂપમાં અહીં ટાઈપ કે પેસ્ટ કરો.",
+    pdfUrl: "https://drive.google.com/file/d/1HUIo-sv3nUQv78dD8AQXcdT3-iqMFA7Y/view?usp=drive_link",
+    examName: "GSRTC Conductor / Driver Exam",
+    year: "ઓલ્ડ પેપર ૧",
+    category: "GSRTC સ્પેશિયલ",
+    targetQuestions: 100,
+    createdAt: "2026-11-20T00:00:00.000Z",
+  },
+  {
+    id: "source_paper_2",
+    title: "GSRTC Old Exam Paper - 2 (ઓરિજિનલ પેપર ૨)",
+    description: "આ પેપર ડાઉનલોડ કરો અને પ્રશ્નો ડિજિટલ રૂપમાં અહીં ટાઈપ કે પેસ્ટ કરો.",
+    pdfUrl: "https://drive.google.com/file/d/1xL0VybupNC5T4hbro_AG8vr-KH2zLGWX/view?usp=drive_link",
+    examName: "GSRTC Conductor / Driver Exam",
+    year: "ઓલ્ડ પેપર ૨",
+    category: "GSRTC સ્પેશિયલ",
+    targetQuestions: 100,
+    createdAt: "2026-11-21T00:00:00.000Z",
+  },
+  {
+    id: "source_paper_3",
+    title: "GSRTC Old Exam Paper - 3 (ઓરિજિનલ પેપર ૩)",
+    description: "આ પેપર ડાઉનલોડ કરો અને પ્રશ્નો ડિજિટલ રૂપમાં અહીં ટાઈપ કે પેસ્ટ કરો.",
+    pdfUrl: "https://drive.google.com/file/d/1OeYcIpcSrzeysnUkxzaHf5fLey1XhKWt/view?usp=drive_link",
+    examName: "GSRTC Conductor / Driver Exam",
+    year: "ઓલ્ડ પેપર ૩",
+    category: "GSRTC સ્પેશિયલ",
+    targetQuestions: 100,
+    createdAt: "2026-11-22T00:00:00.000Z",
+  },
+  {
+    id: "source_paper_4",
+    title: "GSRTC Old Exam Paper - 4 (ઓરિજિનલ પેપર ૪)",
+    description: "આ પેપર ડાઉનલોડ કરો અને પ્રશ્નો ડિજિટલ રૂપમાં અહીં ટાઈપ કે પેસ્ટ કરો.",
+    pdfUrl: "https://drive.google.com/file/d/1ZMcJ7VoDKx5ZlxL94zZ4CieP6J2U8o_b/view?usp=drive_link",
+    examName: "GSRTC Conductor / Driver Exam",
+    year: "ઓલ્ડ પેપર ૪",
+    category: "GSRTC સ્પેશિયલ",
+    targetQuestions: 100,
+    createdAt: "2026-11-23T00:00:00.000Z",
+  },
+];
 
 // Channel for cross-tab realtime sync
 let broadcastChannel: BroadcastChannel | null = null;
@@ -27,7 +76,66 @@ if (typeof window !== "undefined" && "BroadcastChannel" in window) {
   }
 }
 
-// Helper to get local data safely
+// Source Papers management
+export const getLocalSourcePapers = (): SourcePaper[] => {
+  if (typeof window === "undefined") return DEFAULT_SOURCE_PAPERS;
+  try {
+    const data = localStorage.getItem(STORAGE_KEY_SOURCE_PAPERS);
+    if (!data) {
+      setLocalSourcePapers(DEFAULT_SOURCE_PAPERS);
+      return DEFAULT_SOURCE_PAPERS;
+    }
+    const parsed: SourcePaper[] = JSON.parse(data);
+    // Ensure the 4 default papers are present
+    const existingIds = new Set(parsed.map(p => p.id));
+    let hasMerged = false;
+    for (const def of DEFAULT_SOURCE_PAPERS) {
+      if (!existingIds.has(def.id)) {
+        parsed.push(def);
+        hasMerged = true;
+      }
+    }
+    if (hasMerged) {
+      setLocalSourcePapers(parsed);
+    }
+    return parsed;
+  } catch (e) {
+    console.error("Error reading local source papers", e);
+    return DEFAULT_SOURCE_PAPERS;
+  }
+};
+
+export const setLocalSourcePapers = (papers: SourcePaper[]): void => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_SOURCE_PAPERS, JSON.stringify(papers));
+    broadcastChannel?.postMessage({ type: "SOURCE_PAPERS_UPDATED" });
+  } catch (e) {
+    console.error("Error writing local source papers", e);
+  }
+};
+
+export const addOrUpdateSourcePaper = async (paper: SourcePaper): Promise<void> => {
+  const current = getLocalSourcePapers();
+  const idx = current.findIndex(p => p.id === paper.id);
+  if (idx >= 0) {
+    current[idx] = paper;
+  } else {
+    current.unshift(paper);
+  }
+  setLocalSourcePapers(current);
+
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      await setDoc(doc(db, "source_papers", paper.id), paper);
+    } catch (e) {
+      console.warn("Could not sync source paper to firestore", e);
+    }
+  }
+};
+
+// Papers Management
 export const getLocalPapers = (): Paper[] => {
   if (typeof window === "undefined") return [];
   try {
@@ -108,7 +216,6 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
   const localUsers = getLocalUsers();
   const existingIndex = localUsers.findIndex(u => u.id === cleanPhone);
   if (existingIndex >= 0) {
-    // Preserve initial createdAt, update name if provided and lastActive
     userObj.createdAt = localUsers[existingIndex].createdAt || now;
     if (!cleanName && localUsers[existingIndex].name) {
       userObj.name = localUsers[existingIndex].name;
@@ -141,7 +248,7 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
   return userObj;
 };
 
-// Save a Paper (Draft or Completed) with real-time sync
+// Save a Paper with real-time sync & draft cleanup
 export const savePaper = async (paper: Paper): Promise<void> => {
   const now = new Date().toISOString();
   const updatedPaper: Paper = {
@@ -183,7 +290,6 @@ export const savePaper = async (paper: Paper): Promise<void> => {
       const paperRef = doc(db, "papers", paper.id);
       await setDoc(paperRef, updatedPaper);
 
-      // Also update user summary in Firestore
       const userRef = doc(db, "users", paper.userId);
       await setDoc(userRef, {
         lastActive: now,
@@ -221,7 +327,6 @@ export const subscribeUserPapers = (
   userId: string, 
   callback: (papers: Paper[]) => void
 ): (() => void) => {
-  // Initial local dispatch
   const initialLocal = getLocalPapers().filter(p => p.userId === userId);
   callback(initialLocal);
 
@@ -236,10 +341,8 @@ export const subscribeUserPapers = (
         snapshot.forEach((doc) => {
           cloudPapers.push(doc.data() as Paper);
         });
-        // Sort newest first
         cloudPapers.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
         
-        // Merge cloud papers into local papers so offline works flawlessly
         const currentLocal = getLocalPapers();
         const otherPapers = currentLocal.filter(p => p.userId !== userId);
         setLocalPapers([...cloudPapers, ...otherPapers]);
@@ -253,7 +356,6 @@ export const subscribeUserPapers = (
     }
   }
 
-  // Cross-tab broadcast listener
   const handleMessage = (e: MessageEvent) => {
     if (e.data?.type === "PAPERS_UPDATED") {
       const updated = getLocalPapers().filter(p => p.userId === userId);
@@ -347,7 +449,7 @@ export const subscribeAllUsers = (callback: (users: UserProfile[]) => void): (()
   };
 };
 
-// Save temporary draft to avoid progress loss while typing
+// Temporary Draft caching to avoid loss while typing
 export const saveTemporaryDraft = (paperId: string, questions: Question[]): void => {
   if (typeof window === "undefined") return;
   try {
