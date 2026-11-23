@@ -25,7 +25,8 @@ import {
   FileDown,
   ExternalLink,
   Award,
-  Layers
+  Layers,
+  Bot
 } from "lucide-react";
 import { BulkImportModal } from "./BulkImportModal";
 
@@ -34,6 +35,7 @@ interface PaperEditorProps {
   onBack: () => void;
   onTakeTest: (paper: Paper) => void;
   onExport: (paper: Paper) => void;
+  onOpenTelegram?: (paper: Paper) => void;
 }
 
 export const PaperEditor: React.FC<PaperEditorProps> = ({
@@ -41,10 +43,12 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   onBack,
   onTakeTest,
   onExport,
+  onOpenTelegram,
 }) => {
   const [currentPaper, setCurrentPaper] = useState<Paper>(paper);
   const [questions, setQuestions] = useState<Question[]>(paper.questions || []);
   const [searchQuery, setSearchQuery] = useState("");
+  const [copiedTestCode, setCopiedTestCode] = useState(false);
   
   // Editor Form State
   const [isEditingQuestion, setIsEditingQuestion] = useState(false);
@@ -267,13 +271,33 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="truncate flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-bold text-slate-900 text-sm sm:text-base truncate">
                 {currentPaper.title}
               </h2>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 flex-shrink-0">
                 {questions.length} MCQs
               </span>
+              {/* Specific Persistent Test Code */}
+              {currentPaper.testCode && (
+                <div
+                  onClick={() => {
+                    navigator.clipboard.writeText(`/quiz ${currentPaper.testCode}`);
+                    setCopiedTestCode(true);
+                    setTimeout(() => setCopiedTestCode(false), 2000);
+                  }}
+                  className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-300 text-xs font-mono font-bold hover:bg-sky-100 transition-colors shadow-sm"
+                  title="ટેલિગ્રામ કમાન્ડ કોપી કરવા ક્લિક કરો"
+                >
+                  <Bot className="w-3.5 h-3.5 text-sky-600" />
+                  <span>કોડ: {currentPaper.testCode}</span>
+                  {copiedTestCode ? (
+                    <Check className="w-3 h-3 text-emerald-600" />
+                  ) : (
+                    <Copy className="w-3 h-3 text-slate-400" />
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
               <span>{currentPaper.subject || currentPaper.category}</span>
@@ -297,6 +321,16 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
 
         {/* Top Quick Actions */}
         <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end flex-wrap">
+          {/* Specific Test Telegram Runner Button */}
+          <button
+            onClick={() => onOpenTelegram?.({ ...currentPaper, questions })}
+            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold text-xs shadow-sm transition-all"
+            title="આ સ્પેસિફિક ટેસ્ટ ટેલિગ્રામ ગ્રૂપમાં રમાડો"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>ટેલિગ્રામ કોડ ({currentPaper.testCode})</span>
+          </button>
+
           <button
             onClick={() => setBulkModalOpen(true)}
             className="flex-1 sm:flex-initial flex items-center justify-center space-x-1 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs border border-indigo-200 transition-colors"

@@ -45,6 +45,7 @@ export interface Paper {
   targetQuestions?: number;
   timeLimitMinutes?: number;
   isPublic?: boolean;
+  testCode?: string; // Persistent unique code like "GSRTC-4821" to run this specific test in Telegram groups
   sourcePaperId?: string;
   sourcePdfUrl?: string;
   isDigitizedCompleted?: boolean;
@@ -67,7 +68,7 @@ export interface TelegramQuiz {
 
 export interface TelegramBotConfig {
   botToken: string;
-  botUsername: string; // without @, e.g. "GsrtcQuizBot"
+  botUsername: string; // without @, e.g. "GsrtcMockQuizBot"
 }
 
 export interface FirebaseConfig {

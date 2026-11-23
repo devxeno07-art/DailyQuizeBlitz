@@ -17,7 +17,10 @@ import {
   Trophy,
   Award,
   BookOpen,
-  Info
+  Info,
+  Bot,
+  Copy,
+  Check
 } from "lucide-react";
 import { LeaderboardCard, LeaderboardEntry } from "./LeaderboardCard";
 
@@ -33,6 +36,7 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [copiedHeaderCode, setCopiedHeaderCode] = useState(false);
 
   const questions = paper?.questions || [];
   const totalQuestions = questions.length;
@@ -206,6 +210,26 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
           </div>
 
           <div className="flex items-center space-x-2 flex-shrink-0">
+            {paper.testCode && (
+              <div
+                onClick={() => {
+                  navigator.clipboard.writeText(`/quiz ${paper.testCode}`);
+                  setCopiedHeaderCode(true);
+                  setTimeout(() => setCopiedHeaderCode(false), 2000);
+                }}
+                className="hidden sm:inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-full text-xs font-mono font-bold cursor-pointer transition-colors"
+                title="ટેલિગ્રામ કમાન્ડ કોપી કરો"
+              >
+                <Bot className="w-3.5 h-3.5" />
+                <span>કોડ: {paper.testCode}</span>
+                {copiedHeaderCode ? (
+                  <Check className="w-3 h-3 text-emerald-300" />
+                ) : (
+                  <Copy className="w-3 h-3 text-white/80" />
+                )}
+              </div>
+            )}
+
             {!isSubmitted && (
               <div className="flex items-center space-x-1 bg-white/20 px-2.5 py-1 rounded-full text-xs font-mono font-bold">
                 <Clock className="w-3.5 h-3.5" />
@@ -231,6 +255,7 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
               subject={paper.subject || paper.title}
               totalQuestions={totalQuestions}
               timePerQuestion={30}
+              testCode={paper.testCode}
               entries={leaderboardList}
               webUrl={typeof window !== "undefined" ? window.location.href : "#"}
             />

@@ -20,6 +20,13 @@ const STORAGE_KEY_SOURCE_PAPERS = "mcq_master_source_papers";
 const STORAGE_KEY_TELEGRAM_QUIZZES = "mcq_master_telegram_quizzes";
 const STORAGE_KEY_TELEGRAM_BOT_CONFIG = "mcq_master_telegram_bot_config";
 
+// Helper to generate a memorable test code like GSRTC-1042 or TEST-8291
+export const generateTestCode = (category: string = "GSRTC"): string => {
+  const prefix = category.toUpperCase().includes("GSRTC") ? "GSRTC" : "TEST";
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `${prefix}-${num}`;
+};
+
 // Default Initial Source Papers (Google Drive Links)
 export const DEFAULT_SOURCE_PAPERS: SourcePaper[] = [
   {
@@ -68,7 +75,6 @@ export const DEFAULT_SOURCE_PAPERS: SourcePaper[] = [
   },
 ];
 
-// BroadcastChannel for cross-tab sync
 let broadcastChannel: BroadcastChannel | null = null;
 if (typeof window !== "undefined" && "BroadcastChannel" in window) {
   try {
@@ -149,6 +155,25 @@ export const getTelegramQuizByCode = async (code: string): Promise<TelegramQuiz 
   const found = local.find(q => q.code.toUpperCase() === cleanCode);
   if (found) return found;
 
+  // Also check if any paper has this testCode directly
+  const papers = getLocalPapers();
+  const matchingPaper = papers.find(p => p.testCode?.toUpperCase() === cleanCode);
+  if (matchingPaper && matchingPaper.questions?.length > 0) {
+    const directQuiz: TelegramQuiz = {
+      code: cleanCode,
+      paperId: matchingPaper.id,
+      title: matchingPaper.title,
+      subject: matchingPaper.subject || matchingPaper.category,
+      timePerQuestion: 30,
+      questions: matchingPaper.questions,
+      createdBy: matchingPaper.userName,
+      creatorPhone: matchingPaper.userId,
+      createdAt: matchingPaper.updatedAt || new Date().toISOString(),
+    };
+    saveTelegramQuiz(directQuiz);
+    return directQuiz;
+  }
+
   const { db } = initFirebase();
   if (db) {
     try {
@@ -221,12 +246,25 @@ export const addOrUpdateSourcePaper = async (paper: SourcePaper): Promise<void> 
   }
 };
 
-// Papers Management
+// Papers Management (Ensuring testCode is always present!)
 export const getLocalPapers = (): Paper[] => {
   if (typeof window === "undefined") return [];
   try {
     const data = localStorage.getItem(STORAGE_KEY_PAPERS);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    const parsed: Paper[] = JSON.parse(data);
+    // Ensure every paper has a testCode
+    let updated = false;
+    parsed.forEach(p => {
+      if (!p.testCode) {
+        p.testCode = generateTestCode(p.category);
+        updated = true;
+      }
+    });
+    if (updated) {
+      setLocalPapers(parsed);
+    }
+    return parsed;
   } catch (e) {
     console.error("Error reading local papers", e);
     return [];
@@ -264,7 +302,6 @@ export const setLocalUsers = (users: UserProfile[]): void => {
   }
 };
 
-// Current logged in user
 export const getCurrentUser = (): UserProfile | null => {
   if (typeof window === "undefined") return null;
   try {
@@ -284,7 +321,6 @@ export const setCurrentUser = (user: UserProfile | null): void => {
   }
 };
 
-// Login or register user with just Phone Number & Name (no password!)
 export const loginOrRegister = async (phoneNumber: string, name: string): Promise<UserProfile> => {
   const cleanPhone = phoneNumber.trim().replace(/\D/g, "");
   const cleanName = name.trim();
@@ -332,11 +368,14 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
   return userObj;
 };
 
-// Save a Paper with real-time sync & draft cleanup
+// Save a Paper with real-time sync & auto-link Telegram test code
 export const savePaper = async (paper: Paper): Promise<void> => {
   const now = new Date().toISOString();
+  const code = paper.testCode || generateTestCode(paper.category);
+
   const updatedPaper: Paper = {
     ...paper,
+    testCode: code,
     updatedAt: now,
   };
 
@@ -351,6 +390,22 @@ export const savePaper = async (paper: Paper): Promise<void> => {
 
   if (typeof window !== "undefined") {
     localStorage.removeItem(`mcq_draft_${paper.id}`);
+  }
+
+  // Auto-sync to Telegram Quizzes store so the code is always live!
+  if (updatedPaper.questions && updatedPaper.questions.length > 0) {
+    const tQuiz: TelegramQuiz = {
+      code: code,
+      paperId: updatedPaper.id,
+      title: updatedPaper.title,
+      subject: updatedPaper.subject || updatedPaper.category,
+      timePerQuestion: 30,
+      questions: updatedPaper.questions,
+      createdBy: updatedPaper.userName,
+      creatorPhone: updatedPaper.userId,
+      createdAt: now,
+    };
+    saveTelegramQuiz(tQuiz);
   }
 
   const localUsers = getLocalUsers();
@@ -382,7 +437,6 @@ export const savePaper = async (paper: Paper): Promise<void> => {
   }
 };
 
-// Delete Paper
 export const deletePaper = async (paperId: string): Promise<void> => {
   const localPapers = getLocalPapers();
   const filtered = localPapers.filter(p => p.id !== paperId);
@@ -402,7 +456,6 @@ export const deletePaper = async (paperId: string): Promise<void> => {
   }
 };
 
-// Subscribe to real-time papers for a specific user
 export const subscribeUserPapers = (
   userId: string, 
   callback: (papers: Paper[]) => void
@@ -451,7 +504,6 @@ export const subscribeUserPapers = (
   };
 };
 
-// Admin: Subscribe to ALL papers
 export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => void) => {
   callback(getLocalPapers());
 
@@ -490,7 +542,6 @@ export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => 
   };
 };
 
-// Admin: Subscribe to ALL users
 export const subscribeAllUsers = (callback: (users: UserProfile[]) => void): (() => void) => {
   callback(getLocalUsers());
 
@@ -529,7 +580,6 @@ export const subscribeAllUsers = (callback: (users: UserProfile[]) => void): (()
   };
 };
 
-// Temporary Draft caching to avoid loss while typing
 export const saveTemporaryDraft = (paperId: string, questions: Question[]): void => {
   if (typeof window === "undefined") return;
   try {

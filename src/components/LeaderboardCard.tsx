@@ -19,6 +19,7 @@ interface LeaderboardCardProps {
   subject: string;
   totalQuestions: number;
   timePerQuestion?: number;
+  testCode?: string;
   entries: LeaderboardEntry[];
   webUrl?: string;
 }
@@ -28,10 +29,12 @@ export const LeaderboardCard: React.FC<LeaderboardCardProps> = ({
   subject,
   totalQuestions,
   timePerQuestion = 30,
+  testCode,
   entries,
   webUrl = "#",
 }) => {
   const [copiedTelegram, setCopiedTelegram] = useState(false);
+  const [copiedCodePill, setCopiedCodePill] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Calculate grade based on percentage
@@ -113,6 +116,20 @@ export const LeaderboardCard: React.FC<LeaderboardCardProps> = ({
           <div className="text-xs sm:text-sm font-semibold text-slate-200 flex items-center gap-1.5 flex-wrap">
             <span>📚 <strong>વિષય:</strong></span>
             <span>📖 {subject} ({totalQuestions} MCQs)</span>
+            {testCode && (
+              <span 
+                onClick={() => {
+                  navigator.clipboard.writeText(`/quiz ${testCode}`);
+                  setCopiedCodePill(true);
+                  setTimeout(() => setCopiedCodePill(false), 2000);
+                }}
+                className="cursor-pointer ml-auto bg-sky-500/20 text-sky-300 border border-sky-400/40 px-2 py-0.5 rounded-lg text-xs font-mono font-bold hover:bg-sky-500/30 transition-all flex items-center gap-1"
+                title="આ કોડ કોપી કરો"
+              >
+                <span>🔑 કોડ: {testCode}</span>
+                {copiedCodePill ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-sky-300" />}
+              </span>
+            )}
           </div>
 
           <div className="text-[11px] sm:text-xs text-slate-400 mt-1.5 flex items-center gap-2 flex-wrap">
@@ -208,8 +225,27 @@ export const LeaderboardCard: React.FC<LeaderboardCardProps> = ({
           </table>
         </div>
 
-        {/* Footer Greetings */}
-        <div className="pt-4 text-center space-y-1.5 border-t border-slate-800/80 mt-4">
+        {/* Footer Greetings & Test Code Runner */}
+        <div className="pt-4 text-center space-y-2 border-t border-slate-800/80 mt-4">
+          {testCode && (
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-sky-500/30 text-xs text-sky-200 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <span className="font-medium text-slate-300">
+                👉 આ જ સ્પેસિફિક ટેસ્ટ તમારા ટેલિગ્રામ ગ્રૂપમાં રમાડવા માટે આ કમાન્ડ મોકલો:
+              </span>
+              <div 
+                onClick={() => {
+                  navigator.clipboard.writeText(`/quiz ${testCode}`);
+                  setCopiedCodePill(true);
+                  setTimeout(() => setCopiedCodePill(false), 2000);
+                }}
+                className="cursor-pointer bg-sky-600/30 hover:bg-sky-600/50 text-sky-300 font-mono font-bold px-3 py-1 rounded-lg border border-sky-400/50 flex items-center gap-1.5"
+              >
+                <span>/quiz {testCode}</span>
+                {copiedCodePill ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </div>
+            </div>
+          )}
+
           <p className="text-xs sm:text-sm text-slate-300 font-medium flex items-center justify-center gap-1">
             <span>👏</span>
             <span>ઉત્કૃષ્ટ પ્રદર્શન કરનાર તમામ વિદ્યાર્થીઓને ખૂબ ખૂબ અભિનંદન! 🎯</span>

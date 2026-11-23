@@ -91,6 +91,7 @@ export default function Home() {
             onBack={() => setSelectedPaper(null)}
             onTakeTest={handleTakeTest}
             onExport={handleOpenExport}
+            onOpenTelegram={handleOpenTelegram}
           />
         ) : (
           <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 space-y-4">

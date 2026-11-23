@@ -18,7 +18,8 @@ import {
   CheckCircle,
   FileCheck,
   AlertCircle,
-  Bot
+  Bot,
+  Copy
 } from "lucide-react";
 
 interface PaperListProps {
@@ -40,8 +41,17 @@ export const PaperList: React.FC<PaperListProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
   if (!user) return null;
+
+  const handleCopyCode = (paper: Paper, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const code = paper.testCode || "GSRTC-1001";
+    navigator.clipboard.writeText(`/quiz ${code}`);
+    setCopiedCodeId(paper.id);
+    setTimeout(() => setCopiedCodeId(null), 2000);
+  };
 
   const filteredPapers = papers.filter((paper) => {
     const matchesSearch = 
@@ -209,9 +219,26 @@ export const PaperList: React.FC<PaperListProps> = ({
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
-                      {paper.category || "General"}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        {paper.category || "General"}
+                      </span>
+                      {paper.testCode && (
+                        <span 
+                          onClick={(e) => handleCopyCode(paper, e)}
+                          className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-100 flex items-center gap-1 shadow-xs cursor-pointer"
+                          title="કમાન્ડ કોપી કરવા ક્લિક કરો (/quiz CODE)"
+                        >
+                          <Bot className="w-3 h-3 text-sky-600" />
+                          <span>કોડ: {paper.testCode}</span>
+                          {copiedCodeId === paper.id ? (
+                            <CheckCircle className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-2.5 h-2.5 text-slate-400" />
+                          )}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[11px] text-slate-400 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {formatDate(paper.updatedAt)}
@@ -266,11 +293,11 @@ export const PaperList: React.FC<PaperListProps> = ({
                         e.stopPropagation();
                         onOpenTelegramQuiz?.(paper);
                       }}
-                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold text-xs border border-sky-200 transition-colors"
-                      title="ટેલિગ્રામ ગ્રૂપ ક્વિઝ કોડ બનાવો"
+                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-800 hover:bg-sky-100 font-bold text-xs border border-sky-300 transition-colors"
+                      title="ટેલિગ્રામ ગ્રૂપ ક્વિઝ કોડ બનાવો / જુઓ"
                     >
                       <Bot className="w-3.5 h-3.5 text-sky-600" />
-                      <span>Telegram</span>
+                      <span>{paper.testCode || "Telegram કોડ"}</span>
                     </button>
 
                     {/* Share / Export */}
