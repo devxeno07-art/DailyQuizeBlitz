@@ -13,7 +13,7 @@ import {
 interface AuthContextType {
   user: UserProfile | null;
   papers: Paper[];
-  isLoading: boolean;
+  isMounted: boolean;
   login: (phone: string, name: string) => Promise<UserProfile>;
   logout: () => void;
   checkExistingUser: (phone: string) => UserProfile | null;
@@ -22,12 +22,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(() => getCurrentUser());
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [papers, setPapers] = useState<Paper[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Initialize from storage on mount
+  // Initialize from storage only after client mount to prevent SSR hydration mismatch
   useEffect(() => {
+    setIsMounted(true);
     try {
       const savedUser = getCurrentUser();
       if (savedUser) {
@@ -74,7 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, papers, isLoading, login, logout, checkExistingUser }}>
+    <AuthContext.Provider value={{ user, papers, isMounted, login, logout, checkExistingUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTelegramQuizByCode, getTelegramBotConfig } from "@/lib/storage";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   return NextResponse.json({
     status: "online",

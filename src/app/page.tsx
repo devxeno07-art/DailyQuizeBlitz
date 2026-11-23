@@ -17,7 +17,7 @@ import { TelegramBotModal } from "@/components/TelegramBotModal";
 import { FileDown, BookOpen, Plus, Sparkles, Bot } from "lucide-react";
 
 export default function Home() {
-  const { user, papers, isLoading } = useAuth();
+  const { user, papers, isMounted } = useAuth();
 
   // Navigation: "library" (Old PDF Papers from Drive) | "my_papers" (My Digitized Papers)
   const [mainTab, setMainTab] = useState<"library" | "my_papers">("library");
@@ -60,6 +60,18 @@ export default function Home() {
     setSelectedPaper(paper);
     setAdminOpen(false);
   };
+
+  // Prevent SSR Hydration Mismatch: render clean initial shell until client mounts
+  if (!isMounted) {
+    return (
+      <main className="min-h-screen bg-slate-50 flex flex-col">
+        <header className="sticky top-0 z-40 bg-white/95 border-b border-slate-200 h-14"></header>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-8 h-8 border-3 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 flex flex-col selection:bg-brand-500 selection:text-white">

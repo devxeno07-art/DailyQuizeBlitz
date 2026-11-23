@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { 
   FileText, 
@@ -26,7 +26,11 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onOpenTelegram }) => {
   const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const hasCloudConfig = !!getStoredFirebaseConfig();
+  const [hasCloudConfig, setHasCloudConfig] = useState(false);
+
+  useEffect(() => {
+    setHasCloudConfig(!!getStoredFirebaseConfig());
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm no-print">
