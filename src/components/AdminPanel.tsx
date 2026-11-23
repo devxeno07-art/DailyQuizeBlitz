@@ -8,7 +8,8 @@ import {
   getLocalUsers, 
   getLocalPapers,
   getLocalSourcePapers,
-  addOrUpdateSourcePaper
+  addOrUpdateSourcePaper,
+  toggleUserLibraryAccess
 } from "@/lib/storage";
 import { getStoredFirebaseConfig, initFirebase } from "@/lib/firebase";
 import { 
@@ -36,15 +37,17 @@ import {
 } from "lucide-react";
 
 interface AdminPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onInspectPaper: (paper: Paper) => void;
+  isOpen?: boolean;
+  standalone?: boolean;
+  onClose?: () => void;
+  onInspectPaper?: (paper: Paper) => void;
 }
 
 const DEFAULT_ADMIN_PIN = "7777";
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
-  isOpen,
+  isOpen = true,
+  standalone = false,
   onClose,
   onInspectPaper,
 }) => {
@@ -101,7 +104,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
   }, [isAuthenticated]);
 
-  if (!isOpen) return null;
+  if (!isOpen && !standalone) return null;
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,9 +183,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const wrapperClass = standalone
+    ? "min-h-screen bg-slate-900 p-2 sm:p-6 flex flex-col items-center justify-start"
+    : "fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn";
+
+  const containerClass = standalone
+    ? "w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col my-auto min-h-[88vh]"
+    : "w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 max-h-[94vh] flex flex-col";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 max-h-[94vh] flex flex-col">
+    <div className={wrapperClass}>
+      <div className={containerClass}>
         {/* Top Header */}
         <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-brand-950 text-white flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -207,12 +218,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <Settings className="w-4 h-4" />
               </button>
             )}
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/20 text-slate-400 hover:text-white transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {standalone ? (
+              <a
+                href="/"
+                className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white text-xs font-bold transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>મુખ્ય પેજ</span>
+              </a>
+            ) : (
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg hover:bg-white/20 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -378,8 +399,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               </span>
                               <button
                                 onClick={() => {
-                                  onInspectPaper(paper);
-                                  onClose();
+                                  onInspectPaper?.(paper);
+                                  onClose?.();
                                 }}
                                 className="px-3 py-1 rounded-lg bg-brand-600 text-white font-bold text-xs hover:bg-brand-700"
                               >
@@ -435,8 +456,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto text-xs">
-                              <div className="text-left sm:text-right">
+                            <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto text-xs flex-wrap">
+                              <div className="text-left sm:text-right mr-1">
                                 <div className="font-bold text-indigo-700">
                                   {u.papersCount || 0} પેપર્સ • {u.questionsCount || 0} પ્રશ્નો
                                 </div>
@@ -444,6 +465,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   છેલ્લે સક્રિય: {formatDate(u.lastActive)}
                                 </div>
                               </div>
+
+                              {/* Toggle Library Access */}
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await toggleUserLibraryAccess(u.id);
+                                  setUsers((prev) =>
+                                    prev.map((user) =>
+                                      user.id === u.id ? { ...user, hasLibraryAccess: !user.hasLibraryAccess } : user
+                                    )
+                                  );
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all ${
+                                  u.hasLibraryAccess
+                                    ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                                    : "bg-slate-100 border-slate-300 text-slate-600 hover:bg-slate-200"
+                                }`}
+                                title={
+                                  u.hasLibraryAccess
+                                    ? "ઓરિજિનલ પેપર્સ લાઇબ્રેરી મંજૂર છે (ક્લિક કરી રદ કરો)"
+                                    : "ઓરિજિનલ પેપર્સ લાઇબ્રેરી એક્સેસ આપો"
+                                }
+                              >
+                                {u.hasLibraryAccess ? (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>લાઇબ્રેરી મંજૂર (Active)</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                                    <span>લાઇબ્રેરી આપો (Grant)</span>
+                                  </>
+                                )}
+                              </button>
 
                               <button
                                 onClick={() => setSelectedUser(u)}
@@ -537,8 +593,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   <span
                                     key={lp.id}
                                     onClick={() => {
-                                      onInspectPaper(lp);
-                                      onClose();
+                                      onInspectPaper?.(lp);
+                                      onClose?.();
                                     }}
                                     className="px-2 py-0.5 rounded-md bg-white border border-slate-300 text-slate-800 cursor-pointer hover:border-brand-500 text-[10px] font-medium"
                                   >

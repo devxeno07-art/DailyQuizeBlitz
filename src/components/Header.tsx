@@ -18,12 +18,10 @@ import {
 import { getStoredFirebaseConfig } from "@/lib/firebase";
 
 interface HeaderProps {
-  onOpenAdmin: () => void;
-  onOpenSettings?: () => void;
   onOpenTelegram?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onOpenTelegram }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenTelegram }) => {
   const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hasCloudConfig, setHasCloudConfig] = useState(false);
@@ -65,13 +63,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onO
 
           {/* Cloud Sync Status */}
           <div 
-            onClick={onOpenSettings}
-            className={`flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-full cursor-pointer transition-all border ${
+            className={`flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-full transition-all border ${
               hasCloudConfig 
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" 
-                : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                : "bg-amber-50 text-amber-800 border-amber-200"
             }`}
-            title={hasCloudConfig ? "Cloud Real-time Sync Active" : "Local Real-time Active (Click to connect Firebase Cloud)"}
+            title={hasCloudConfig ? "Cloud Real-time Sync Active" : "Local Real-time Active"}
           >
             {hasCloudConfig ? (
               <>
@@ -87,15 +84,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onO
               </>
             )}
           </div>
-
-          {/* Admin Button */}
-          <button
-            onClick={onOpenAdmin}
-            className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors border border-slate-200"
-          >
-            <ShieldCheck className="w-4 h-4 text-indigo-600" />
-            <span>Admin</span>
-          </button>
 
           {/* User Profile Pill */}
           {user && (
@@ -115,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onO
           )}
         </div>
 
-        {/* Mobile Hamburger / Quick Actions */}
+        {/* Mobile Quick Actions (No Admin Button visible) */}
         <div className="flex sm:hidden items-center space-x-1.5">
           {/* Telegram Quick Icon */}
           <button
@@ -124,15 +112,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onO
             title="Telegram Bot"
           >
             <Bot className="w-4 h-4" />
-          </button>
-
-          {/* Admin Quick Icon */}
-          <button
-            onClick={onOpenAdmin}
-            className="p-2 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100"
-            title="Admin Panel"
-          >
-            <ShieldCheck className="w-4 h-4" />
           </button>
 
           {/* Menu Toggle */}
@@ -183,39 +162,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onO
               <Bot className="w-4 h-4" />
               <span>Telegram Bot - ગ્રૂપ ક્વિઝ કોડ બનાવો</span>
             </button>
-
-            <div className="flex items-center justify-between pt-1">
-              <div 
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenSettings?.();
-                }}
-                className="flex items-center space-x-2 text-xs text-slate-600"
-              >
-                {hasCloudConfig ? (
-                  <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    <span className="font-medium text-emerald-800">Cloud Realtime</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                    <span className="font-medium text-amber-800">Local Realtime</span>
-                  </>
-                )}
-              </div>
-
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenAdmin();
-                }}
-                className="flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Admin Panel</span>
-              </button>
-            </div>
           </div>
         </div>
       )}

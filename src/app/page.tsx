@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Paper } from "@/types";
 import { Header } from "@/components/Header";
@@ -10,17 +10,27 @@ import { PaperEditor } from "@/components/PaperEditor";
 import { CreatePaperModal } from "@/components/CreatePaperModal";
 import { ExamModal } from "@/components/ExamModal";
 import { ExportModal } from "@/components/ExportModal";
-import { AdminPanel } from "@/components/AdminPanel";
 import { PrintableView } from "@/components/PrintableView";
 import { SourcePapersLibrary } from "@/components/SourcePapersLibrary";
 import { TelegramBotModal } from "@/components/TelegramBotModal";
-import { FileDown, BookOpen, Plus, Sparkles, Bot } from "lucide-react";
+import { FileDown, BookOpen, Plus, Bot } from "lucide-react";
 
 export default function Home() {
   const { user, papers, isMounted } = useAuth();
 
-  // Navigation: "library" (Old PDF Papers from Drive) | "my_papers" (My Digitized Papers)
-  const [mainTab, setMainTab] = useState<"library" | "my_papers">("library");
+  const hasLibraryAccess = !!user?.hasLibraryAccess;
+
+  // Navigation: "library" (Old PDF Papers from Drive - Admin granted only) | "my_papers" (My Digitized Papers)
+  const [mainTab, setMainTab] = useState<"library" | "my_papers">("my_papers");
+
+  // Keep tab synced with user's library permission
+  useEffect(() => {
+    if (hasLibraryAccess) {
+      setMainTab("library");
+    } else {
+      setMainTab("my_papers");
+    }
+  }, [hasLibraryAccess]);
 
   // Active Paper State for Editor
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
@@ -29,7 +39,6 @@ export default function Home() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [examModalOpen, setExamModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
   const [activeModalPaper, setActiveModalPaper] = useState<Paper | null>(null);
 
@@ -56,11 +65,6 @@ export default function Home() {
     setTelegramModalOpen(true);
   };
 
-  const handleInspectPaperFromAdmin = (paper: Paper) => {
-    setSelectedPaper(paper);
-    setAdminOpen(false);
-  };
-
   // Prevent SSR Hydration Mismatch: render clean initial shell until client mounts
   if (!isMounted) {
     return (
@@ -75,10 +79,8 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50 flex flex-col selection:bg-brand-500 selection:text-white">
-      {/* App Header */}
+      {/* App Header (No Admin links or buttons) */}
       <Header
-        onOpenAdmin={() => setAdminOpen(true)}
-        onOpenSettings={() => setAdminOpen(true)}
         onOpenTelegram={() => handleOpenTelegram()}
       />
 
@@ -99,22 +101,25 @@ export default function Home() {
             {/* Top Tab Switcher */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-2">
               <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar">
-                <button
-                  onClick={() => setMainTab("library")}
-                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
-                    mainTab === "library"
-                      ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md shadow-orange-500/20"
-                      : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  <FileDown className="w-4 h-4" />
-                  <span>ઓરિજિનલ પેપર્સ લાઇબ્રેરી (Drive)</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    mainTab === "library" ? "bg-white/20 text-white" : "bg-orange-100 text-orange-800"
-                  }`}>
-                    4 પેપર્સ
-                  </span>
-                </button>
+                {/* Show Library Tab ONLY if user was specifically granted permission by Admin */}
+                {hasLibraryAccess && (
+                  <button
+                    onClick={() => setMainTab("library")}
+                    className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                      mainTab === "library"
+                        ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md shadow-orange-500/20"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <FileDown className="w-4 h-4" />
+                    <span>ઓરિજિનલ પેપર્સ લાઇબ્રેરી (Drive)</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      mainTab === "library" ? "bg-white/20 text-white" : "bg-orange-100 text-orange-800"
+                    }`}>
+                      4 પેપર્સ
+                    </span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setMainTab("my_papers")}
@@ -154,7 +159,7 @@ export default function Home() {
             </div>
 
             {/* Active Tab View */}
-            {mainTab === "library" ? (
+            {mainTab === "library" && hasLibraryAccess ? (
               <SourcePapersLibrary
                 onStartDigitizing={(paper) => setSelectedPaper(paper)}
                 onOpenPaper={(paper) => setSelectedPaper(paper)}
@@ -195,12 +200,6 @@ export default function Home() {
         paper={activeModalPaper || selectedPaper}
         isOpen={telegramModalOpen}
         onClose={() => setTelegramModalOpen(false)}
-      />
-
-      <AdminPanel
-        isOpen={adminOpen}
-        onClose={() => setAdminOpen(false)}
-        onInspectPaper={handleInspectPaperFromAdmin}
       />
 
       {/* Print-Only Document */}

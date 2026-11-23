@@ -302,6 +302,33 @@ export const setLocalUsers = (users: UserProfile[]): void => {
   }
 };
 
+export const toggleUserLibraryAccess = async (userId: string): Promise<boolean> => {
+  const users = getLocalUsers();
+  const idx = users.findIndex(u => u.id === userId);
+  if (idx < 0) return false;
+  
+  const newState = !users[idx].hasLibraryAccess;
+  users[idx].hasLibraryAccess = newState;
+  setLocalUsers(users);
+
+  const current = getCurrentUser();
+  if (current && current.id === userId) {
+    current.hasLibraryAccess = newState;
+    setCurrentUser(current);
+  }
+
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      await setDoc(doc(db, "users", userId), { hasLibraryAccess: newState }, { merge: true });
+    } catch (e) {
+      console.warn("Could not sync user library access to firestore", e);
+    }
+  }
+
+  return newState;
+};
+
 export const getCurrentUser = (): UserProfile | null => {
   if (typeof window === "undefined") return null;
   try {

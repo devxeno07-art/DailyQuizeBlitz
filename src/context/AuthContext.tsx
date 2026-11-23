@@ -37,6 +37,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.warn("Auth initialization error", e);
     }
+
+    if (typeof window !== "undefined") {
+      try {
+        const channel = new BroadcastChannel("mcq_realtime_sync");
+        const handleMsg = (e: MessageEvent) => {
+          if (e.data?.type === "USERS_UPDATED") {
+            const latestUser = getCurrentUser();
+            if (latestUser) {
+              setUser(latestUser);
+            }
+          }
+        };
+        channel.addEventListener("message", handleMsg);
+        return () => {
+          channel.removeEventListener("message", handleMsg);
+          channel.close();
+        };
+      } catch (err) {}
+    }
   }, []);
 
   // Listen to user papers in real-time

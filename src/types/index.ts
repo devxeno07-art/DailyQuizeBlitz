@@ -4,6 +4,7 @@ export interface UserProfile {
   name: string;
   createdAt: string;
   lastActive: string;
+  hasLibraryAccess?: boolean; // Granted only by Admin from hidden admin portal
   papersCount?: number;
   questionsCount?: number;
 }
