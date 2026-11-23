@@ -61,17 +61,6 @@ export default function Home() {
     setAdminOpen(false);
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center space-y-3">
-          <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
-          <p className="text-xs text-slate-500 font-medium">MCQ Master લોડ થઈ રહ્યું છે...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <main className="min-h-screen bg-slate-50 flex flex-col selection:bg-brand-500 selection:text-white">
       {/* App Header */}

@@ -22,17 +22,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(() => getCurrentUser());
   const [papers, setPapers] = useState<Paper[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize from storage
+  // Initialize from storage on mount
   useEffect(() => {
-    const savedUser = getCurrentUser();
-    if (savedUser) {
-      setUser(savedUser);
+    try {
+      const savedUser = getCurrentUser();
+      if (savedUser) {
+        setUser(savedUser);
+      }
+    } catch (e) {
+      console.warn("Auth initialization error", e);
     }
-    setIsLoading(false);
   }, []);
 
   // Listen to user papers in real-time
