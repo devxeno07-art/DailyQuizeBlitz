@@ -17,7 +17,8 @@ import {
   Layers, 
   CheckCircle,
   FileCheck,
-  AlertCircle
+  AlertCircle,
+  Bot
 } from "lucide-react";
 
 interface PaperListProps {
@@ -25,6 +26,7 @@ interface PaperListProps {
   onOpenCreate: () => void;
   onTakeTest: (paper: Paper) => void;
   onExport: (paper: Paper) => void;
+  onOpenTelegramQuiz?: (paper: Paper) => void;
 }
 
 export const PaperList: React.FC<PaperListProps> = ({
@@ -32,6 +34,7 @@ export const PaperList: React.FC<PaperListProps> = ({
   onOpenCreate,
   onTakeTest,
   onExport,
+  onOpenTelegramQuiz,
 }) => {
   const { user, papers } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
@@ -40,7 +43,6 @@ export const PaperList: React.FC<PaperListProps> = ({
 
   if (!user) return null;
 
-  // Filter papers
   const filteredPapers = papers.filter((paper) => {
     const matchesSearch = 
       paper.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -54,7 +56,6 @@ export const PaperList: React.FC<PaperListProps> = ({
   });
 
   const totalQuestions = papers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
-
   const categories = ["all", ...Array.from(new Set(papers.map(p => p.category).filter(Boolean)))];
 
   const handleDelete = async (paperId: string, e: React.MouseEvent) => {
@@ -81,7 +82,7 @@ export const PaperList: React.FC<PaperListProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-5 space-y-5 pb-24">
+    <div className="space-y-4 pb-20">
       {/* User Stats Card */}
       <div className="relative overflow-hidden bg-gradient-to-r from-brand-600 via-indigo-600 to-indigo-700 rounded-3xl p-5 text-white shadow-xl shadow-brand-500/15">
         <div className="relative z-10">
@@ -111,11 +112,11 @@ export const PaperList: React.FC<PaperListProps> = ({
           <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/15">
             <div className="bg-white/10 rounded-2xl p-2.5 backdrop-blur-sm text-center">
               <div className="text-lg sm:text-2xl font-black">{papers.length}</div>
-              <div className="text-[10px] sm:text-xs text-indigo-100 font-medium">કુલ પેપર્સ (Papers)</div>
+              <div className="text-[10px] sm:text-xs text-indigo-100 font-medium">કુલ પેપર્સ</div>
             </div>
             <div className="bg-white/10 rounded-2xl p-2.5 backdrop-blur-sm text-center">
               <div className="text-lg sm:text-2xl font-black">{totalQuestions}</div>
-              <div className="text-[10px] sm:text-xs text-indigo-100 font-medium">બનાવેલ પ્રશ્નો (MCQs)</div>
+              <div className="text-[10px] sm:text-xs text-indigo-100 font-medium">બનાવેલ MCQs</div>
             </div>
             <div className="bg-white/10 rounded-2xl p-2.5 backdrop-blur-sm text-center">
               <div className="text-lg sm:text-2xl font-black">100%</div>
@@ -124,14 +125,12 @@ export const PaperList: React.FC<PaperListProps> = ({
           </div>
         </div>
 
-        {/* Decorative circle */}
         <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-white/5 rounded-full blur-2xl pointer-events-none"></div>
       </div>
 
       {/* Search & Category Filter Bar */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          {/* Search Box */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
             <input
@@ -143,7 +142,6 @@ export const PaperList: React.FC<PaperListProps> = ({
             />
           </div>
 
-          {/* Mobile Create Button */}
           <button
             onClick={onOpenCreate}
             className="sm:hidden flex items-center space-x-1 px-3.5 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 whitespace-nowrap"
@@ -153,7 +151,6 @@ export const PaperList: React.FC<PaperListProps> = ({
           </button>
         </div>
 
-        {/* Category Filter Chips */}
         {categories.length > 2 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             {categories.map((cat) => (
@@ -173,7 +170,7 @@ export const PaperList: React.FC<PaperListProps> = ({
         )}
       </div>
 
-      {/* Papers Grid / List */}
+      {/* Papers Grid */}
       {filteredPapers.length === 0 ? (
         <div className="text-center py-12 px-4 bg-white rounded-3xl border border-dashed border-slate-300">
           <div className="w-16 h-16 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mx-auto mb-3">
@@ -211,7 +208,6 @@ export const PaperList: React.FC<PaperListProps> = ({
                 className="group bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-sm hover:shadow-md hover:border-brand-300 transition-all cursor-pointer flex flex-col justify-between"
               >
                 <div>
-                  {/* Top Bar of Card */}
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
                       {paper.category || "General"}
@@ -222,7 +218,6 @@ export const PaperList: React.FC<PaperListProps> = ({
                     </span>
                   </div>
 
-                  {/* Title & Subject */}
                   <h4 className="font-bold text-slate-900 text-base leading-snug group-hover:text-brand-600 transition-colors">
                     {paper.title}
                   </h4>
@@ -232,7 +227,6 @@ export const PaperList: React.FC<PaperListProps> = ({
                     </p>
                   )}
 
-                  {/* Progress Bar */}
                   <div className="mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="font-semibold text-slate-700 flex items-center gap-1">
@@ -251,22 +245,35 @@ export const PaperList: React.FC<PaperListProps> = ({
                 </div>
 
                 {/* Bottom Actions */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-1">
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
                   <div className="flex items-center gap-1">
-                    {/* Take Test / Practice button */}
+                    {/* Take Test */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onTakeTest(paper);
                       }}
-                      className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition-colors"
+                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition-colors"
                       title="ટેસ્ટ મોડ શરૂ કરો"
                     >
                       <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>ટેસ્ટ આપો</span>
+                      <span>ટેસ્ટ</span>
                     </button>
 
-                    {/* Share / Export button */}
+                    {/* Telegram Bot Code Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenTelegramQuiz?.(paper);
+                      }}
+                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold text-xs border border-sky-200 transition-colors"
+                      title="ટેલિગ્રામ ગ્રૂપ ક્વિઝ કોડ બનાવો"
+                    >
+                      <Bot className="w-3.5 h-3.5 text-sky-600" />
+                      <span>Telegram</span>
+                    </button>
+
+                    {/* Share / Export */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -280,7 +287,6 @@ export const PaperList: React.FC<PaperListProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1">
-                    {/* Edit button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -292,7 +298,6 @@ export const PaperList: React.FC<PaperListProps> = ({
                       <span>એડિટ</span>
                     </button>
 
-                    {/* Delete button */}
                     <button
                       onClick={(e) => handleDelete(paper.id, e)}
                       disabled={deletingId === paper.id}
@@ -309,7 +314,7 @@ export const PaperList: React.FC<PaperListProps> = ({
         </div>
       )}
 
-      {/* Mobile Floating Action Button (FAB) for instant paper creation */}
+      {/* Mobile Floating Action Button */}
       <button
         onClick={onOpenCreate}
         className="fixed bottom-6 right-6 z-30 sm:hidden w-14 h-14 rounded-full bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-float flex items-center justify-center transform active:scale-95 transition-all"

@@ -1,4 +1,4 @@
-import { Paper, UserProfile, Question, SourcePaper } from "@/types";
+import { Paper, UserProfile, Question, SourcePaper, TelegramQuiz, TelegramBotConfig } from "@/types";
 import { initFirebase } from "./firebase";
 import { 
   collection, 
@@ -17,8 +17,10 @@ const STORAGE_KEY_PAPERS = "mcq_master_papers";
 const STORAGE_KEY_USERS = "mcq_master_users";
 const STORAGE_KEY_CURRENT_USER = "mcq_master_current_user";
 const STORAGE_KEY_SOURCE_PAPERS = "mcq_master_source_papers";
+const STORAGE_KEY_TELEGRAM_QUIZZES = "mcq_master_telegram_quizzes";
+const STORAGE_KEY_TELEGRAM_BOT_CONFIG = "mcq_master_telegram_bot_config";
 
-// Default Initial Source Papers provided by user (Google Drive Links)
+// Default Initial Source Papers (Google Drive Links)
 export const DEFAULT_SOURCE_PAPERS: SourcePaper[] = [
   {
     id: "source_paper_1",
@@ -66,7 +68,7 @@ export const DEFAULT_SOURCE_PAPERS: SourcePaper[] = [
   },
 ];
 
-// Channel for cross-tab realtime sync
+// BroadcastChannel for cross-tab sync
 let broadcastChannel: BroadcastChannel | null = null;
 if (typeof window !== "undefined" && "BroadcastChannel" in window) {
   try {
@@ -75,6 +77,91 @@ if (typeof window !== "undefined" && "BroadcastChannel" in window) {
     console.warn("BroadcastChannel not supported", e);
   }
 }
+
+// Telegram Bot Config
+export const getTelegramBotConfig = (): TelegramBotConfig => {
+  if (typeof window === "undefined") {
+    return {
+      botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+      botUsername: process.env.TELEGRAM_BOT_USERNAME || "GsrtcMockQuizBot",
+    };
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TELEGRAM_BOT_CONFIG);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+
+  return {
+    botToken: process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN || "",
+    botUsername: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || "GsrtcMockQuizBot",
+  };
+};
+
+export const setTelegramBotConfig = (cfg: TelegramBotConfig): void => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_TELEGRAM_BOT_CONFIG, JSON.stringify(cfg));
+  } catch (e) {}
+};
+
+// Telegram Quizzes Storage
+export const getLocalTelegramQuizzes = (): TelegramQuiz[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TELEGRAM_QUIZZES);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+export const setLocalTelegramQuizzes = (quizzes: TelegramQuiz[]): void => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_TELEGRAM_QUIZZES, JSON.stringify(quizzes));
+    broadcastChannel?.postMessage({ type: "TELEGRAM_QUIZZES_UPDATED" });
+  } catch (e) {}
+};
+
+export const saveTelegramQuiz = async (quiz: TelegramQuiz): Promise<void> => {
+  const current = getLocalTelegramQuizzes();
+  const idx = current.findIndex(q => q.code === quiz.code);
+  if (idx >= 0) {
+    current[idx] = quiz;
+  } else {
+    current.unshift(quiz);
+  }
+  setLocalTelegramQuizzes(current);
+
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      await setDoc(doc(db, "telegram_quizzes", quiz.code), quiz);
+    } catch (e) {
+      console.warn("Could not sync quiz to firestore", e);
+    }
+  }
+};
+
+export const getTelegramQuizByCode = async (code: string): Promise<TelegramQuiz | null> => {
+  const cleanCode = code.trim().toUpperCase();
+  const local = getLocalTelegramQuizzes();
+  const found = local.find(q => q.code.toUpperCase() === cleanCode);
+  if (found) return found;
+
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      const snap = await getDoc(doc(db, "telegram_quizzes", cleanCode));
+      if (snap.exists()) {
+        return snap.data() as TelegramQuiz;
+      }
+    } catch (e) {
+      console.warn("Could not fetch quiz from cloud", e);
+    }
+  }
+  return null;
+};
 
 // Source Papers management
 export const getLocalSourcePapers = (): SourcePaper[] => {
@@ -86,7 +173,6 @@ export const getLocalSourcePapers = (): SourcePaper[] => {
       return DEFAULT_SOURCE_PAPERS;
     }
     const parsed: SourcePaper[] = JSON.parse(data);
-    // Ensure the 4 default papers are present
     const existingIds = new Set(parsed.map(p => p.id));
     let hasMerged = false;
     for (const def of DEFAULT_SOURCE_PAPERS) {
@@ -212,7 +298,6 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
     lastActive: now,
   };
 
-  // 1. Update local users
   const localUsers = getLocalUsers();
   const existingIndex = localUsers.findIndex(u => u.id === cleanPhone);
   if (existingIndex >= 0) {
@@ -227,7 +312,6 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
   setLocalUsers(localUsers);
   setCurrentUser(userObj);
 
-  // 2. Sync to Firebase if available
   const { db } = initFirebase();
   if (db) {
     try {
@@ -256,7 +340,6 @@ export const savePaper = async (paper: Paper): Promise<void> => {
     updatedAt: now,
   };
 
-  // 1. Save to localStorage immediately (guarantees zero progress loss)
   const localPapers = getLocalPapers();
   const existingIdx = localPapers.findIndex(p => p.id === paper.id);
   if (existingIdx >= 0) {
@@ -266,12 +349,10 @@ export const savePaper = async (paper: Paper): Promise<void> => {
   }
   setLocalPapers(localPapers);
 
-  // Clear temp draft cache once committed
   if (typeof window !== "undefined") {
     localStorage.removeItem(`mcq_draft_${paper.id}`);
   }
 
-  // Update user stats locally
   const localUsers = getLocalUsers();
   const userIdx = localUsers.findIndex(u => u.id === paper.userId);
   if (userIdx >= 0) {
@@ -283,7 +364,6 @@ export const savePaper = async (paper: Paper): Promise<void> => {
     setLocalUsers(localUsers);
   }
 
-  // 2. Realtime sync to Cloud Firestore
   const { db } = initFirebase();
   if (db) {
     try {

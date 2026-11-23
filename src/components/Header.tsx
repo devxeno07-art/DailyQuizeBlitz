@@ -12,16 +12,18 @@ import {
   CheckCircle2, 
   Database,
   Menu,
-  X
+  X,
+  Bot
 } from "lucide-react";
 import { getStoredFirebaseConfig } from "@/lib/firebase";
 
 interface HeaderProps {
   onOpenAdmin: () => void;
   onOpenSettings?: () => void;
+  onOpenTelegram?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings, onOpenTelegram }) => {
   const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const hasCloudConfig = !!getStoredFirebaseConfig();
@@ -45,8 +47,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings }) =
           </div>
         </div>
 
-        {/* Status & Desktop Actions */}
-        <div className="hidden sm:flex items-center space-x-3">
+        {/* Desktop Navigation & Actions */}
+        <div className="hidden sm:flex items-center space-x-2.5">
+          {/* Telegram Bot Quick Trigger */}
+          <button
+            onClick={onOpenTelegram}
+            className="flex items-center space-x-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-sm transition-all"
+            title="Telegram Bot & Group Mock Test"
+          >
+            <Bot className="w-4 h-4" />
+            <span>Telegram Bot ક્વિઝ</span>
+          </button>
+
           {/* Cloud Sync Status */}
           <div 
             onClick={onOpenSettings}
@@ -78,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings }) =
             className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors border border-slate-200"
           >
             <ShieldCheck className="w-4 h-4 text-indigo-600" />
-            <span>Admin Panel</span>
+            <span>Admin</span>
           </button>
 
           {/* User Profile Pill */}
@@ -101,6 +113,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings }) =
 
         {/* Mobile Hamburger / Quick Actions */}
         <div className="flex sm:hidden items-center space-x-1.5">
+          {/* Telegram Quick Icon */}
+          <button
+            onClick={onOpenTelegram}
+            className="p-2 rounded-lg bg-sky-50 text-sky-600 border border-sky-100"
+            title="Telegram Bot"
+          >
+            <Bot className="w-4 h-4" />
+          </button>
+
           {/* Admin Quick Icon */}
           <button
             onClick={onOpenAdmin}
@@ -147,37 +168,50 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdmin, onOpenSettings }) =
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-1">
-            <div 
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenSettings?.();
-              }}
-              className="flex items-center space-x-2 text-xs text-slate-600"
-            >
-              {hasCloudConfig ? (
-                <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                  <span className="font-medium text-emerald-800">Cloud Real-time Connected</span>
-                </>
-              ) : (
-                <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                  <span className="font-medium text-amber-800">Local Real-time Mode</span>
-                </>
-              )}
-            </div>
-
+          <div className="flex flex-col space-y-2 pt-1">
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
-                onOpenAdmin();
+                onOpenTelegram?.();
               }}
-              className="flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 text-white"
+              className="w-full flex items-center justify-center space-x-2 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white font-bold text-xs shadow-md"
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Admin Panel</span>
+              <Bot className="w-4 h-4" />
+              <span>Telegram Bot - ગ્રૂપ ક્વિઝ કોડ બનાવો</span>
             </button>
+
+            <div className="flex items-center justify-between pt-1">
+              <div 
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenSettings?.();
+                }}
+                className="flex items-center space-x-2 text-xs text-slate-600"
+              >
+                {hasCloudConfig ? (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <span className="font-medium text-emerald-800">Cloud Realtime</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                    <span className="font-medium text-amber-800">Local Realtime</span>
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenAdmin();
+                }}
+                className="flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Admin Panel</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

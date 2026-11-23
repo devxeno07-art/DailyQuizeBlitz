@@ -45,12 +45,29 @@ export interface Paper {
   targetQuestions?: number;
   timeLimitMinutes?: number;
   isPublic?: boolean;
-  sourcePaperId?: string; // If this paper is digitizing an old source paper
-  sourcePdfUrl?: string;  // Direct link to the source Google Drive PDF
+  sourcePaperId?: string;
+  sourcePdfUrl?: string;
   isDigitizedCompleted?: boolean;
   questions: Question[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TelegramQuiz {
+  code: string; // e.g. "GSRTC-8492"
+  paperId: string;
+  title: string;
+  subject: string;
+  timePerQuestion: number; // in seconds, e.g. 30
+  questions: Question[];
+  createdBy: string;
+  creatorPhone: string;
+  createdAt: string;
+}
+
+export interface TelegramBotConfig {
+  botToken: string;
+  botUsername: string; // without @, e.g. "GsrtcQuizBot"
 }
 
 export interface FirebaseConfig {
