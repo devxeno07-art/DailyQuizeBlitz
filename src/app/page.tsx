@@ -13,6 +13,7 @@ import { ExportModal } from "@/components/ExportModal";
 import { PrintableView } from "@/components/PrintableView";
 import { SourcePapersLibrary } from "@/components/SourcePapersLibrary";
 import { TelegramBotModal } from "@/components/TelegramBotModal";
+import { LeaderboardModal } from "@/components/LeaderboardModal";
 import { FileDown, BookOpen, Plus, Bot } from "lucide-react";
 
 export default function Home() {
@@ -40,6 +41,7 @@ export default function Home() {
   const [examModalOpen, setExamModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
+  const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(false);
   const [activeModalPaper, setActiveModalPaper] = useState<Paper | null>(null);
 
   const handleSelectPaper = (paper: Paper) => {
@@ -54,6 +56,11 @@ export default function Home() {
   const handleOpenExport = (paper: Paper) => {
     setActiveModalPaper(paper);
     setExportModalOpen(true);
+  };
+
+  const handleOpenLeaderboard = (paper: Paper) => {
+    setActiveModalPaper(paper);
+    setLeaderboardModalOpen(true);
   };
 
   const handleOpenTelegram = (paper?: Paper) => {
@@ -95,6 +102,7 @@ export default function Home() {
             onTakeTest={handleTakeTest}
             onExport={handleOpenExport}
             onOpenTelegram={handleOpenTelegram}
+            onOpenLeaderboard={handleOpenLeaderboard}
           />
         ) : (
           <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 space-y-4">
@@ -171,6 +179,7 @@ export default function Home() {
                 onTakeTest={handleTakeTest}
                 onExport={handleOpenExport}
                 onOpenTelegramQuiz={(paper) => handleOpenTelegram(paper)}
+                onOpenLeaderboard={handleOpenLeaderboard}
               />
             )}
           </div>
@@ -200,6 +209,13 @@ export default function Home() {
         paper={activeModalPaper || selectedPaper}
         isOpen={telegramModalOpen}
         onClose={() => setTelegramModalOpen(false)}
+      />
+
+      <LeaderboardModal
+        paper={activeModalPaper || selectedPaper}
+        isOpen={leaderboardModalOpen}
+        onClose={() => setLeaderboardModalOpen(false)}
+        onTakeTest={handleTakeTest}
       />
 
       {/* Print-Only Document */}

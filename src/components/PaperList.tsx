@@ -19,7 +19,8 @@ import {
   FileCheck,
   AlertCircle,
   Bot,
-  Copy
+  Copy,
+  Trophy
 } from "lucide-react";
 
 interface PaperListProps {
@@ -28,6 +29,7 @@ interface PaperListProps {
   onTakeTest: (paper: Paper) => void;
   onExport: (paper: Paper) => void;
   onOpenTelegramQuiz?: (paper: Paper) => void;
+  onOpenLeaderboard?: (paper: Paper) => void;
 }
 
 export const PaperList: React.FC<PaperListProps> = ({
@@ -36,6 +38,7 @@ export const PaperList: React.FC<PaperListProps> = ({
   onTakeTest,
   onExport,
   onOpenTelegramQuiz,
+  onOpenLeaderboard,
 }) => {
   const { user, papers } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
@@ -285,6 +288,19 @@ export const PaperList: React.FC<PaperListProps> = ({
                     >
                       <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
                       <span>ટેસ્ટ</span>
+                    </button>
+
+                    {/* View Leaderboard Results */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenLeaderboard?.(paper);
+                      }}
+                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs border border-amber-200 transition-colors"
+                      title="પરિણામ & લીડરબોર્ડ સ્કોર જુઓ"
+                    >
+                      <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                      <span>પરિણામ</span>
                     </button>
 
                     {/* Telegram Bot Code Button */}

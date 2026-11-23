@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { UserProfile, Paper, FirebaseConfig, SourcePaper } from "@/types";
+import { 
+  UserProfile, 
+  Paper, 
+  FirebaseConfig, 
+  SourcePaper, 
+  TelegramQuiz, 
+  TelegramBotConfig, 
+  ScheduledDailyTest 
+} from "@/types";
 import { 
   subscribeAllUsers, 
   subscribeAllPapers, 
@@ -9,7 +17,13 @@ import {
   getLocalPapers,
   getLocalSourcePapers,
   addOrUpdateSourcePaper,
-  toggleUserLibraryAccess
+  toggleUserLibraryAccess,
+  getTelegramBotConfig,
+  setTelegramBotConfig,
+  getLocalScheduledTests,
+  saveScheduledDailyTest,
+  deleteScheduledDailyTest,
+  dispatchScheduledDailyTest
 } from "@/lib/storage";
 import { getStoredFirebaseConfig, initFirebase } from "@/lib/firebase";
 import { 
@@ -33,7 +47,17 @@ import {
   FileDown,
   Plus,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  Calendar,
+  Bot,
+  Play,
+  Send,
+  Trash2,
+  RefreshCw,
+  AlertCircle,
+  Copy,
+  Check,
+  Radio
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -54,13 +78,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [pin, setPin] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "digitization">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "digitization" | "scheduler" | "bot_config">("users");
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [allPapers, setAllPapers] = useState<Paper[]>([]);
   const [sourcePapers, setSourcePapers] = useState<SourcePaper[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+
+  // Bot Config State
+  const [botConfig, setBotConfig] = useState<TelegramBotConfig>(() => getTelegramBotConfig());
+  const [botConfigSaved, setBotConfigSaved] = useState(false);
+  const [testingBot, setTestingBot] = useState(false);
+  const [botTestResult, setBotTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // Daily Scheduler State
+  const [scheduledTests, setScheduledTests] = useState<ScheduledDailyTest[]>([]);
+  const [schedTitle, setSchedTitle] = useState("ડેઇલી મેગા મોક ટેસ્ટ - GSRTC");
+  const [schedMode, setSchedMode] = useState<"all_mixed" | "subject_wise">("all_mixed");
+  const [schedSubject, setSchedSubject] = useState("");
+  const [schedQuestionCount, setSchedQuestionCount] = useState(50);
+  const [schedTimePerQ, setSchedTimePerQ] = useState(30);
+  const [schedDailyTime, setSchedDailyTime] = useState("21:00");
+  const [schedTargetGroup, setSchedTargetGroup] = useState("");
+  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
+  const [lastDispatchedQuiz, setLastDispatchedQuiz] = useState<TelegramQuiz | null>(null);
+  const [copiedDispatchedCode, setCopiedDispatchedCode] = useState(false);
 
   // Add Source Paper Form Modal
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
@@ -84,11 +127,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   });
   const [configSaved, setConfigSaved] = useState(false);
 
-  // Load users, papers, source papers
+  // Load users, papers, source papers, scheduler & bot config
   useEffect(() => {
     if (!isAuthenticated) return;
 
     setSourcePapers(getLocalSourcePapers());
+    setScheduledTests(getLocalScheduledTests());
+    setBotConfig(getTelegramBotConfig());
 
     const unsubUsers = subscribeAllUsers((updatedUsers) => {
       setUsers(updatedUsers);
@@ -166,6 +211,112 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setTimeout(() => {
         window.location.reload();
       }, 1000);
+    }
+  };
+
+  // Scheduler & Bot Handlers
+  const availableSubjects = Array.from(
+    new Set(allPapers.map((p) => (p.subject || p.category || "").trim()).filter(Boolean))
+  );
+
+  const getSubjectQuestionCount = (subj: string) => {
+    const matching = allPapers.filter(
+      (p) =>
+        p.subject?.toLowerCase().trim() === subj.toLowerCase().trim() ||
+        p.category?.toLowerCase().trim() === subj.toLowerCase().trim()
+    );
+    return matching.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
+  };
+
+  const handleSaveSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newSchedule: ScheduledDailyTest = {
+      id: `sched_${Date.now()}`,
+      title: schedTitle.trim() || "ડેઇલી મોક ટેસ્ટ",
+      mode: schedMode,
+      subject: schedMode === "subject_wise" ? (schedSubject || availableSubjects[0] || "સામાન્ય જ્ઞાન") : "બધા વિષયો મિક્સ",
+      questionCount: Number(schedQuestionCount) || 50,
+      timePerQuestion: Number(schedTimePerQ) || 30,
+      scheduledTime: schedDailyTime,
+      isActive: true,
+      targetGroupId: schedTargetGroup.trim() || botConfig.targetGroupId || "",
+      createdAt: new Date().toISOString(),
+    };
+    await saveScheduledDailyTest(newSchedule);
+    setScheduledTests(getLocalScheduledTests());
+    alert("ડેઇલી ટેસ્ટ શેડ્યુલ સફળતાપૂર્વક સેવ થયું!");
+  };
+
+  const handleDispatchNow = async (scheduleId: string) => {
+    setDispatchingId(scheduleId);
+    try {
+      const quiz = await dispatchScheduledDailyTest(scheduleId);
+      if (quiz) {
+        setLastDispatchedQuiz(quiz);
+        setScheduledTests(getLocalScheduledTests());
+      } else {
+        alert("પસંદ કરેલ કેટેગરીમાં પૂરતા પ્રશ્નો ઉપલબ્ધ નથી.");
+      }
+    } catch (e) {
+      alert("ટેસ્ટ મોકલવામાં કોઈ ક્ષતિ થઈ.");
+    } finally {
+      setDispatchingId(null);
+    }
+  };
+
+  const handleDeleteSchedule = async (id: string) => {
+    if (confirm("શું તમે આ ડેઇલી ટેસ્ટ શેડ્યુલ કાઢી નાખવા માંગો છો?")) {
+      await deleteScheduledDailyTest(id);
+      setScheduledTests(getLocalScheduledTests());
+    }
+  };
+
+  const handleToggleScheduleActive = async (s: ScheduledDailyTest) => {
+    const updated = { ...s, isActive: !s.isActive };
+    await saveScheduledDailyTest(updated);
+    setScheduledTests(getLocalScheduledTests());
+  };
+
+  const handleSaveBotConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    setTelegramBotConfig(botConfig);
+    setBotConfigSaved(true);
+    setTimeout(() => setBotConfigSaved(false), 2500);
+  };
+
+  const handleTestBotConnection = async () => {
+    if (!botConfig.botToken) {
+      setBotTestResult({ ok: false, message: "કૃપા કરીને પહેલા બોટ ટોકન નાખો." });
+      return;
+    }
+    setTestingBot(true);
+    setBotTestResult(null);
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${botConfig.botToken}/getMe`);
+      const data = await res.json();
+      if (data.ok && data.result) {
+        setBotTestResult({
+          ok: true,
+          message: `કનેક્શન સફળ! બોટ યુઝરનેમ: @${data.result.username} (${data.result.first_name})`,
+        });
+        if (!botConfig.botUsername && data.result.username) {
+          const updated = { ...botConfig, botUsername: data.result.username };
+          setBotConfig(updated);
+          setTelegramBotConfig(updated);
+        }
+      } else {
+        setBotTestResult({
+          ok: false,
+          message: `કનેક્શન નિષ્ફળ: ${data.description || "અમાન્ય બોટ ટોકન"}`,
+        });
+      }
+    } catch (e) {
+      setBotTestResult({
+        ok: false,
+        message: "નેટવર્ક એરર: ટેલિગ્રામ સર્વર સાથે કનેક્ટ થઈ શક્યું નથી.",
+      });
+    } finally {
+      setTestingBot(false);
     }
   };
 
@@ -314,29 +465,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Admin Tabs */}
-            <div className="flex border-b border-slate-200 space-x-4">
+            <div className="flex border-b border-slate-200 space-x-2 sm:space-x-4 overflow-x-auto no-scrollbar">
               <button
                 onClick={() => setActiveTab("users")}
-                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 ${
+                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
                   activeTab === "users"
                     ? "border-brand-600 text-brand-700"
                     : "border-transparent text-slate-500 hover:text-slate-700"
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>યુઝર્સ અને પ્રોજેક્ટ્સ (Users & Papers)</span>
+                <span>યુઝર્સ & પેપર્સ ({users.length})</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("digitization")}
-                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 ${
+                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
                   activeTab === "digitization"
                     ? "border-orange-600 text-orange-700"
                     : "border-transparent text-slate-500 hover:text-slate-700"
                 }`}
               >
                 <FileDown className="w-4 h-4" />
-                <span>ઓલ્ડ પેપર્સ ડિજિટાઇઝેશન ટ્રેકર ({sourcePapers.length})</span>
+                <span>ઓલ્ડ પેપર્સ ટ્રેકર ({sourcePapers.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("scheduler")}
+                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                  activeTab === "scheduler"
+                    ? "border-purple-600 text-purple-700"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>📅 ડેઇલી મોક ટેસ્ટ શેડ્યુલર</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("bot_config")}
+                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                  activeTab === "bot_config"
+                    ? "border-sky-600 text-sky-700"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Bot className="w-4 h-4" />
+                <span>🤖 ટેલિગ્રામ બોટ સેટિંગ્સ</span>
               </button>
             </div>
 
@@ -611,6 +786,489 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* TAB 3: DAILY MOCK TEST SCHEDULER */}
+            {activeTab === "scheduler" && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-purple-600" />
+                      <span>ડેઇલી મોક ટેસ્ટ શેડ્યુલર (Daily Mock Test Scheduler)</span>
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      રોજ નિયત સમયે આપોઆપ અથવા એક જ ક્લિકમાં તમામ પ્રશ્નોમાંથી મિક્સ કે સ્પેસિફિક વિષય મુજબ મોક ટેસ્ટ જનરેટ કરી ટેલિગ્રામમાં મોકલો.
+                    </p>
+                  </div>
+                  <div className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200">
+                    કુલ પ્રાપ્ય પ્રશ્નો: <strong>{totalQuestions} MCQs</strong>
+                  </div>
+                </div>
+
+                {/* Last Dispatched Banner */}
+                {lastDispatchedQuiz && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg space-y-2 animate-fadeIn">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
+                        🎉 મોક ટેસ્ટ સફળતાપૂર્વક જનરેટ થઈ ગઈ!
+                      </span>
+                      <button
+                        onClick={() => setLastDispatchedQuiz(null)}
+                        className="text-white/80 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <h5 className="font-bold text-sm sm:text-base">{lastDispatchedQuiz.title}</h5>
+                        <p className="text-xs text-emerald-100">
+                          વિષય: {lastDispatchedQuiz.subject} • {lastDispatchedQuiz.questions.length} પ્રશ્નો • સમય: {lastDispatchedQuiz.timePerQuestion} સે./પ્રશ્ન
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(`/quiz ${lastDispatchedQuiz.code}`);
+                            setCopiedDispatchedCode(true);
+                            setTimeout(() => setCopiedDispatchedCode(false), 2000);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-white text-emerald-800 font-mono font-bold text-xs shadow-sm flex items-center gap-1.5 hover:bg-emerald-50"
+                        >
+                          <span>/quiz {lastDispatchedQuiz.code}</span>
+                          {copiedDispatchedCode ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Schedule Creation Card */}
+                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-4 sm:p-6 space-y-4">
+                  <h5 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-purple-600" />
+                    <span>નવું ડેઇલી મોક ટેસ્ટ શેડ્યુલ કન્ફિગર કરો</span>
+                  </h5>
+
+                  <form onSubmit={handleSaveSchedule} className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Test Title */}
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          ટેસ્ટનું નામ / શીર્ષક *
+                        </label>
+                        <input
+                          type="text"
+                          value={schedTitle}
+                          onChange={(e) => setSchedTitle(e.target.value)}
+                          placeholder="દા.ત. ડેઇલી મેગા મોક ટેસ્ટ - GSRTC"
+                          required
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                        />
+                      </div>
+
+                      {/* Daily Time */}
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          રોજ મોકલવાનો સમય (Daily Scheduled Time) *
+                        </label>
+                        <input
+                          type="time"
+                          value={schedDailyTime}
+                          onChange={(e) => setSchedDailyTime(e.target.value)}
+                          required
+                          className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Mode Selection */}
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-2">
+                        પ્રશ્નો પસંદ કરવાનો મોડ (Question Source Mode) *
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label
+                          className={`p-3.5 rounded-2xl border cursor-pointer flex items-start gap-3 transition-all ${
+                            schedMode === "all_mixed"
+                              ? "bg-purple-50 border-purple-400 ring-2 ring-purple-400/30 text-purple-950 font-semibold"
+                              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="sched_mode"
+                            checked={schedMode === "all_mixed"}
+                            onChange={() => setSchedMode("all_mixed")}
+                            className="mt-1 accent-purple-600"
+                          />
+                          <div>
+                            <div className="font-bold text-xs sm:text-sm">🎲 બધા જ પ્રશ્નોમાંથી મિક્સ (All Questions Mix)</div>
+                            <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                              સિસ્ટમમાં બનેલા તમામ ડિજિટલ પેપર્સમાંથી રેન્ડમ રીતે પ્રશ્નો પસંદ કરીને ટેસ્ટ તૈયાર કરશે. (પૂલ: {totalQuestions} પ્રશ્નો)
+                            </div>
+                          </div>
+                        </label>
+
+                        <label
+                          className={`p-3.5 rounded-2xl border cursor-pointer flex items-start gap-3 transition-all ${
+                            schedMode === "subject_wise"
+                              ? "bg-purple-50 border-purple-400 ring-2 ring-purple-400/30 text-purple-950 font-semibold"
+                              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="sched_mode"
+                            checked={schedMode === "subject_wise"}
+                            onChange={() => setSchedMode("subject_wise")}
+                            className="mt-1 accent-purple-600"
+                          />
+                          <div>
+                            <div className="font-bold text-xs sm:text-sm">📚 વિષય વાઇઝ (Subject-Wise)</div>
+                            <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                              કોઈ ચોક્કસ વિષય (દા.ત. ગુજરાતી વ્યાકરણ, GSRTC સ્પેશિયલ, કાયદો)માંથી જ પ્રશ્નો મોકલશે.
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Subject Dropdown (if subject_wise) */}
+                    {schedMode === "subject_wise" && (
+                      <div className="p-3.5 bg-white rounded-2xl border border-purple-200 space-y-1.5">
+                        <label className="block font-bold text-purple-950">
+                          કયા વિષયની મોક ટેસ્ટ રાખવી છે? *
+                        </label>
+                        {availableSubjects.length === 0 ? (
+                          <p className="text-slate-400 text-xs italic">
+                            કોઈ વિષય મળ્યો નથી. ડિજિટલ પેપર્સ બનાવતી વખતે વિષય દાખલ કરો.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {availableSubjects.map((subj) => {
+                              const qCount = getSubjectQuestionCount(subj);
+                              const isSelected = schedSubject === subj || (!schedSubject && subj === availableSubjects[0]);
+                              return (
+                                <button
+                                  type="button"
+                                  key={subj}
+                                  onClick={() => setSchedSubject(subj)}
+                                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                                    isSelected
+                                      ? "bg-purple-100 border-purple-500 text-purple-950 font-bold shadow-xs"
+                                      : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  <div className="truncate text-xs">{subj}</div>
+                                  <div className="text-[10px] text-purple-700 font-mono mt-0.5">
+                                    {qCount} MCQs પ્રાપ્ય
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Questions Count */}
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          ટેસ્ટમાં કેટલા પ્રશ્નો રાખવા?
+                        </label>
+                        <select
+                          value={schedQuestionCount}
+                          onChange={(e) => setSchedQuestionCount(Number(e.target.value))}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-800"
+                        >
+                          <option value={10}>૧૦ પ્રશ્નો (Quick Quiz)</option>
+                          <option value={20}>૨૦ પ્રશ્નો</option>
+                          <option value={30}>૩૦ પ્રશ્નો</option>
+                          <option value={50}>૫૦ પ્રશ્નો (Standard)</option>
+                          <option value={60}>૬૦ પ્રશ્નો (Duo/Grammar)</option>
+                          <option value={100}>૧૦૦ પ્રશ્નો (Mega Mock)</option>
+                        </select>
+                      </div>
+
+                      {/* Time per Question */}
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          પ્રશ્ન દીઠ સમય
+                        </label>
+                        <select
+                          value={schedTimePerQ}
+                          onChange={(e) => setSchedTimePerQ(Number(e.target.value))}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-800"
+                        >
+                          <option value={15}>૧૫ સેકન્ડ (Fast)</option>
+                          <option value={30}>૩૦ સેકન્ડ (Standard)</option>
+                          <option value={45}>૪૫ સેકન્ડ</option>
+                          <option value={60}>૬૦ સેકન્ડ (Detailed)</option>
+                        </select>
+                      </div>
+
+                      {/* Target Group */}
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Telegram ગ્રૂપ / ચેનલ ID (વૈકલ્પિક)
+                        </label>
+                        <input
+                          type="text"
+                          value={schedTargetGroup}
+                          onChange={(e) => setSchedTargetGroup(e.target.value)}
+                          placeholder={botConfig.targetGroupId || "@gsrtc_group"}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-800 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 flex items-center gap-1.5 transition-all"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>શેડ્યુલ સેવ કરો (Save Daily Schedule)</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Existing Schedules Table */}
+                <div className="space-y-3">
+                  <h5 className="font-bold text-slate-900 text-sm">
+                    હાલના સક્રિય શેડ્યુલ્સ ({scheduledTests.length})
+                  </h5>
+
+                  {scheduledTests.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-xs">
+                      હજુ સુધી કોઈ ડેઇલી શેડ્યુલ કન્ફિગર કરેલ નથી. ઉપરના ફોર્મ વડે નવું શેડ્યુલ ઉમેરો.
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {scheduledTests.map((s) => (
+                        <div
+                          key={s.id}
+                          className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-sm">{s.title}</span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  s.mode === "subject_wise"
+                                    ? "bg-indigo-100 text-indigo-800"
+                                    : "bg-purple-100 text-purple-800"
+                                }`}
+                              >
+                                {s.mode === "subject_wise" ? `વિષય: ${s.subject}` : "બધા પ્રશ્નો મિક્સ"}
+                              </span>
+                              <span
+                                onClick={() => handleToggleScheduleActive(s)}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer ${
+                                  s.isActive
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-slate-100 text-slate-500"
+                                }`}
+                              >
+                                {s.isActive ? "● સક્રિય (Daily Active)" : "○ થોભાવેલ (Paused)"}
+                              </span>
+                            </div>
+
+                            <div className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
+                              <span>⏰ સમય: <strong>રોજ {s.scheduledTime} વાગ્યે</strong></span>
+                              <span>•</span>
+                              <span>📊 <strong>{s.questionCount} MCQs</strong></span>
+                              <span>•</span>
+                              <span>⏱ <strong>{s.timePerQuestion} સે./પ્રશ્ન</strong></span>
+                              {s.lastGeneratedCode && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-purple-700 font-bold">
+                                    છેલ્લો કોડ: {s.lastGeneratedCode}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <button
+                              onClick={() => handleDispatchNow(s.id)}
+                              disabled={dispatchingId === s.id}
+                              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all disabled:opacity-50"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>{dispatchingId === s.id ? "મોકલાઈ રહ્યું છે..." : "હમણાં જ ક્વિઝ મોકલો"}</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteSchedule(s.id)}
+                              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200"
+                              title="ડિલીટ કરો"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: TELEGRAM BOT SETTINGS */}
+            {activeTab === "bot_config" && (
+              <div className="max-w-2xl space-y-6">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-sky-600" />
+                    <span>ટેલિગ્રામ બોટ કન્ફિગરેશન (Telegram Bot Settings)</span>
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    તમારા ટેલિગ્રામ બોટનું ટોકન અને યુઝરનેમ અહીં કન્ફિગર કરો જેથી ગ્રૂપમાં સીધા જ મોક ટેસ્ટ અને લીડરબોર્ડ પરિણામો મોકલી શકાય.
+                  </p>
+                </div>
+
+                {botConfigSaved && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>બોટ સેટિંગ્સ સફળતાપૂર્વક સેવ થઈ ગયા છે!</span>
+                  </div>
+                )}
+
+                {botTestResult && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold border flex items-center gap-2 animate-fadeIn ${
+                      botTestResult.ok
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                        : "bg-rose-50 border-rose-300 text-rose-800"
+                    }`}
+                  >
+                    {botTestResult.ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                    )}
+                    <span>{botTestResult.message}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSaveBotConfig} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">
+                      Telegram Bot Token (BotFather પાસેથી મળેલ) *
+                    </label>
+                    <input
+                      type="password"
+                      value={botConfig.botToken}
+                      onChange={(e) => setBotConfig({ ...botConfig, botToken: e.target.value })}
+                      placeholder="દા.ત. 1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                      required
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      જો બોટ ન હોય, તો ટેલિગ્રામમાં <strong>@BotFather</strong> ને <code>/newbot</code> કમાન્ડ આપીને મિનિટોમાં બોટ ટોકન મેળવો.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        Bot Username (@ વગર)
+                      </label>
+                      <input
+                        type="text"
+                        value={botConfig.botUsername}
+                        onChange={(e) => setBotConfig({ ...botConfig, botUsername: e.target.value.replace(/^@/, "") })}
+                        placeholder="દા.ત. GsrtcMockQuizBot"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        ડિફોલ્ટ સમય (સેકન્ડ પ્રતિ પ્રશ્ન)
+                      </label>
+                      <input
+                        type="number"
+                        min={10}
+                        max={300}
+                        value={botConfig.defaultTimePerQuestion || 30}
+                        onChange={(e) => setBotConfig({ ...botConfig, defaultTimePerQuestion: Number(e.target.value) })}
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">
+                      ડિફોલ્ટ ટેલિગ્રામ ગ્રૂપ અથવા ચેનલ Username / Chat ID
+                    </label>
+                    <input
+                      type="text"
+                      value={botConfig.targetGroupId || ""}
+                      onChange={(e) => setBotConfig({ ...botConfig, targetGroupId: e.target.value })}
+                      placeholder="@gsrtc_discussion_group અથવા -100xxxxxxxxxx"
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      ડેઇલી મોક ટેસ્ટ શેડ્યુલર સીધા જ આ ગ્રૂપમાં ટેસ્ટ નોટિફિકેશન મોકલશે.
+                    </p>
+                  </div>
+
+                  {/* Webhook helper */}
+                  <div className="p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl space-y-1.5">
+                    <span className="font-bold text-sky-950 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                      <span>વેબહૂક URL (Webhook Endpoint)</span>
+                    </span>
+                    <p className="text-[11px] text-slate-600">
+                      ગ્રૂપમાં <code>/quiz CODE</code> અથવા <code>/results CODE</code> કમાન્ડ્સ આપવા માટે આ વેબહૂક URL સેટ કરી શકો છો:
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-sky-200 font-mono text-slate-800 flex-1 truncate">
+                        {typeof window !== "undefined" ? `${window.location.origin}/api/telegram/webhook` : "/api/telegram/webhook"}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${window.location.origin}/api/telegram/webhook`;
+                          navigator.clipboard.writeText(url);
+                          alert("Webhook URL કોપી થઈ ગઈ!");
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-sky-600 text-white font-bold text-[11px]"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleTestBotConnection}
+                      disabled={testingBot}
+                      className="px-4 py-2.5 rounded-xl border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${testingBot ? "animate-spin" : ""}`} />
+                      <span>{testingBot ? "ચકાસી રહ્યું છે..." : "બોટ કનેક્શન ટેસ્ટ કરો"}</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center gap-1.5 transition-colors"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>બોટ સેટિંગ્સ સેવ કરો</span>
+                    </button>
+                  </div>
+                </form>
               </div>
             )}
           </div>

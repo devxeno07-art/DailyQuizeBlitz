@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Paper } from "@/types";
+import { Paper, TestAttemptResult } from "@/types";
+import { saveTestAttempt } from "@/lib/storage";
 import { useAuth } from "@/context/AuthContext";
 import confetti from "canvas-confetti";
 import { 
@@ -90,13 +91,36 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
     setIsSubmitted(true);
 
     let correct = 0;
+    let wrong = 0;
     questions.forEach((q, idx) => {
-      if (selectedAnswers[idx] === q.correctAnswer) {
+      const ans = selectedAnswers[idx];
+      if (ans === q.correctAnswer) {
         correct++;
+      } else if (ans !== undefined) {
+        wrong++;
       }
     });
 
     const percentage = totalQuestions > 0 ? Math.round((correct / totalQuestions) * 100) : 0;
+    const grade = calculateGrade(percentage);
+
+    const attempt: TestAttemptResult = {
+      id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      testCode: paper.testCode || "GSRTC-101",
+      paperId: paper.id,
+      paperTitle: paper.title,
+      subject: paper.subject || paper.category,
+      studentName: user?.name || "GSRTC Aspirant",
+      studentPhone: user?.phoneNumber || "",
+      score: correct,
+      totalQuestions: totalQuestions,
+      wrongCount: wrong,
+      percentage: percentage,
+      grade: grade,
+      completedAt: new Date().toISOString(),
+    };
+    saveTestAttempt(attempt);
+
     if (percentage >= 40) {
       try {
         confetti({

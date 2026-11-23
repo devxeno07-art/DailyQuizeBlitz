@@ -26,7 +26,8 @@ import {
   ExternalLink,
   Award,
   Layers,
-  Bot
+  Bot,
+  Trophy
 } from "lucide-react";
 import { BulkImportModal } from "./BulkImportModal";
 
@@ -36,6 +37,7 @@ interface PaperEditorProps {
   onTakeTest: (paper: Paper) => void;
   onExport: (paper: Paper) => void;
   onOpenTelegram?: (paper: Paper) => void;
+  onOpenLeaderboard?: (paper: Paper) => void;
 }
 
 export const PaperEditor: React.FC<PaperEditorProps> = ({
@@ -44,6 +46,7 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   onTakeTest,
   onExport,
   onOpenTelegram,
+  onOpenLeaderboard,
 }) => {
   const [currentPaper, setCurrentPaper] = useState<Paper>(paper);
   const [questions, setQuestions] = useState<Question[]>(paper.questions || []);
@@ -346,6 +349,15 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
           >
             <PlayCircle className="w-3.5 h-3.5" />
             <span>ટેસ્ટ આપો</span>
+          </button>
+
+          <button
+            onClick={() => onOpenLeaderboard?.({ ...currentPaper, questions })}
+            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs border border-amber-200 transition-colors"
+            title="પરિણામ & લીડરબોર્ડ સ્કોર જુઓ"
+          >
+            <Trophy className="w-3.5 h-3.5 text-amber-600" />
+            <span>પરિણામ</span>
           </button>
 
           <button

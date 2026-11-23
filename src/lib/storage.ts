@@ -1,4 +1,13 @@
-import { Paper, UserProfile, Question, SourcePaper, TelegramQuiz, TelegramBotConfig } from "@/types";
+import { 
+  Paper, 
+  UserProfile, 
+  Question, 
+  SourcePaper, 
+  TelegramQuiz, 
+  TelegramBotConfig,
+  ScheduledDailyTest,
+  TestAttemptResult
+} from "@/types";
 import { initFirebase } from "./firebase";
 import { 
   collection, 
@@ -19,6 +28,8 @@ const STORAGE_KEY_CURRENT_USER = "mcq_master_current_user";
 const STORAGE_KEY_SOURCE_PAPERS = "mcq_master_source_papers";
 const STORAGE_KEY_TELEGRAM_QUIZZES = "mcq_master_telegram_quizzes";
 const STORAGE_KEY_TELEGRAM_BOT_CONFIG = "mcq_master_telegram_bot_config";
+const STORAGE_KEY_SCHEDULED_TESTS = "mcq_master_scheduled_tests";
+const STORAGE_KEY_TEST_ATTEMPTS = "mcq_master_test_attempts";
 
 // Helper to generate a memorable test code like GSRTC-1042 or TEST-8291
 export const generateTestCode = (category: string = "GSRTC"): string => {
@@ -90,6 +101,8 @@ export const getTelegramBotConfig = (): TelegramBotConfig => {
     return {
       botToken: process.env.TELEGRAM_BOT_TOKEN || "",
       botUsername: process.env.TELEGRAM_BOT_USERNAME || "GsrtcMockQuizBot",
+      defaultTimePerQuestion: 30,
+      targetGroupId: "",
     };
   }
   try {
@@ -100,6 +113,8 @@ export const getTelegramBotConfig = (): TelegramBotConfig => {
   return {
     botToken: process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN || "",
     botUsername: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || "GsrtcMockQuizBot",
+    defaultTimePerQuestion: 30,
+    targetGroupId: "",
   };
 };
 
@@ -634,3 +649,227 @@ export const getTemporaryDraft = (paperId: string): Question[] | null => {
   }
   return null;
 };
+
+// ==========================================
+// Daily Mock Test Scheduler Management
+// ==========================================
+
+export const getLocalScheduledTests = (): ScheduledDailyTest[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SCHEDULED_TESTS);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+export const setLocalScheduledTests = (tests: ScheduledDailyTest[]): void => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_SCHEDULED_TESTS, JSON.stringify(tests));
+    broadcastChannel?.postMessage({ type: "SCHEDULED_TESTS_UPDATED" });
+  } catch (e) {}
+};
+
+export const saveScheduledDailyTest = async (test: ScheduledDailyTest): Promise<void> => {
+  const current = getLocalScheduledTests();
+  const idx = current.findIndex(t => t.id === test.id);
+  if (idx >= 0) {
+    current[idx] = test;
+  } else {
+    current.unshift(test);
+  }
+  setLocalScheduledTests(current);
+
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      await setDoc(doc(db, "scheduled_tests", test.id), test);
+    } catch (e) {
+      console.warn("Could not sync scheduled test to firestore", e);
+    }
+  }
+};
+
+export const deleteScheduledDailyTest = async (testId: string): Promise<void> => {
+  const current = getLocalScheduledTests().filter(t => t.id !== testId);
+  setLocalScheduledTests(current);
+
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      await deleteDoc(doc(db, "scheduled_tests", testId));
+    } catch (e) {
+      console.warn("Could not delete scheduled test from firestore", e);
+    }
+  }
+};
+
+/**
+ * Intelligent Test Dispatcher:
+ * Generates a mock test based on schedule:
+ * 1) Mode 'all_mixed': pools all digitized questions across all papers in the system
+ * 2) Mode 'subject_wise': pools questions matching selected subject
+ * Dispatches test code, registers Telegram Quiz, and sends announcement to Telegram group.
+ */
+export const dispatchScheduledDailyTest = async (scheduleId: string): Promise<TelegramQuiz | null> => {
+  const schedules = getLocalScheduledTests();
+  const schedule = schedules.find(s => s.id === scheduleId);
+  if (!schedule) return null;
+
+  const allPapers = getLocalPapers();
+  let candidateQuestions: Question[] = [];
+
+  if (schedule.mode === "subject_wise" && schedule.subject) {
+    const targetSubj = schedule.subject.toLowerCase().trim();
+    const matchingPapers = allPapers.filter(p => 
+      p.subject?.toLowerCase().includes(targetSubj) ||
+      p.category?.toLowerCase().includes(targetSubj)
+    );
+    matchingPapers.forEach(p => {
+      if (p.questions && p.questions.length > 0) {
+        candidateQuestions.push(...p.questions);
+      }
+    });
+
+    // Fallback if subject has few questions: include questions from all papers
+    if (candidateQuestions.length === 0) {
+      allPapers.forEach(p => {
+        if (p.questions && p.questions.length > 0) {
+          candidateQuestions.push(...p.questions);
+        }
+      });
+    }
+  } else {
+    allPapers.forEach(p => {
+      if (p.questions && p.questions.length > 0) {
+        candidateQuestions.push(...p.questions);
+      }
+    });
+  }
+
+  if (candidateQuestions.length === 0) {
+    return null;
+  }
+
+  // Deduplicate questions by text
+  const seenTexts = new Set<string>();
+  const uniqueCandidates: Question[] = [];
+  for (const q of candidateQuestions) {
+    const t = q.questionText.trim();
+    if (!seenTexts.has(t)) {
+      seenTexts.add(t);
+      uniqueCandidates.push(q);
+    }
+  }
+
+  // Shuffle randomly
+  const shuffled = [...uniqueCandidates].sort(() => 0.5 - Math.random());
+  const selectedQuestions = shuffled.slice(0, Math.min(schedule.questionCount || 20, shuffled.length));
+
+  // Re-number questions 1..N
+  const finalQuestions = selectedQuestions.map((q, idx) => ({
+    ...q,
+    questionNumber: idx + 1,
+  }));
+
+  const prefix = schedule.mode === "subject_wise" ? "SUBJ" : "DAILY";
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  const code = `${prefix}-${randomNum}`;
+  const now = new Date().toISOString();
+
+  const quizTitle = schedule.title || (schedule.mode === "subject_wise" ? `${schedule.subject} મોક ટેસ્ટ` : "ડેઇલી મેગા મોક ટેસ્ટ");
+  const subjectLabel = schedule.subject || "ડેઇલી મિક્સ ઓલ વિષય";
+
+  const quiz: TelegramQuiz = {
+    code,
+    paperId: `sched_${schedule.id}`,
+    title: quizTitle,
+    subject: subjectLabel,
+    timePerQuestion: schedule.timePerQuestion || 30,
+    questions: finalQuestions,
+    createdBy: "Admin Scheduler",
+    creatorPhone: "Admin",
+    createdAt: now,
+  };
+
+  await saveTelegramQuiz(quiz);
+
+  // Update schedule status
+  schedule.lastRunAt = now;
+  schedule.lastGeneratedCode = code;
+  await saveScheduledDailyTest(schedule);
+
+  // Send announcement to Telegram if bot configured
+  const botConfig = getTelegramBotConfig();
+  const targetGroup = schedule.targetGroupId || botConfig.targetGroupId;
+
+  if (botConfig.botToken && targetGroup) {
+    try {
+      const announcement = 
+        `🏆 <b>${quizTitle} લાઈવ થઈ ગઈ છે!</b>\n\n` +
+        `📚 <b>વિષય:</b> ${subjectLabel}\n` +
+        `📊 <b>કુલ પ્રશ્નો:</b> ${finalQuestions.length} MCQs\n` +
+        `⏱ <b>સમય:</b> ${quiz.timePerQuestion} સે./પ્રશ્ન\n` +
+        `🔑 <b>ટેસ્ટ કોડ:</b> <code>${code}</code>\n\n` +
+        `👉 ગ્રૂપમાં મોક ટેસ્ટ શરૂ કરવા માટે આદેશ આપો:\n` +
+        `<code>/quiz ${code}</code>\n\n` +
+        `🎯 <i>તમામ વિદ્યાર્થી મિત્રો ઝડપથી ટેસ્ટ આપવા તૈયાર થઈ જાવ!</i>`;
+
+      await fetch(`https://api.telegram.org/bot${botConfig.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: targetGroup,
+          text: announcement,
+          parse_mode: "HTML",
+        }),
+      });
+    } catch (err) {
+      console.warn("Could not dispatch telegram message directly:", err);
+    }
+  }
+
+  return quiz;
+};
+
+// ==========================================
+// Test Attempts & Leaderboard Storage
+// ==========================================
+
+export const getLocalTestAttempts = (testCodeOrPaperId?: string): TestAttemptResult[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TEST_ATTEMPTS);
+    const list: TestAttemptResult[] = raw ? JSON.parse(raw) : [];
+    if (testCodeOrPaperId) {
+      const q = testCodeOrPaperId.toLowerCase().trim();
+      return list.filter(a => a.testCode?.toLowerCase() === q || a.paperId?.toLowerCase() === q);
+    }
+    return list;
+  } catch (e) {
+    return [];
+  }
+};
+
+export const saveTestAttempt = async (attempt: TestAttemptResult): Promise<void> => {
+  const current = getLocalTestAttempts();
+  current.unshift(attempt);
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(STORAGE_KEY_TEST_ATTEMPTS, JSON.stringify(current.slice(0, 100)));
+      broadcastChannel?.postMessage({ type: "TEST_ATTEMPTS_UPDATED" });
+    } catch (e) {}
+  }
+
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      await setDoc(doc(db, "test_attempts", attempt.id), attempt);
+    } catch (e) {
+      console.warn("Could not sync test attempt to firestore", e);
+    }
+  }
+};
+

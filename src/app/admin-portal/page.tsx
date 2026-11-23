@@ -6,11 +6,13 @@ import { Paper } from "@/types";
 import { PaperEditor } from "@/components/PaperEditor";
 import { ExamModal } from "@/components/ExamModal";
 import { ExportModal } from "@/components/ExportModal";
+import { LeaderboardModal } from "@/components/LeaderboardModal";
 
 export default function AdminPortalPage() {
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
   const [examModalOpen, setExamModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -21,6 +23,7 @@ export default function AdminPortalPage() {
             onBack={() => setSelectedPaper(null)}
             onTakeTest={() => setExamModalOpen(true)}
             onExport={() => setExportModalOpen(true)}
+            onOpenLeaderboard={() => setLeaderboardModalOpen(true)}
           />
           <ExamModal
             isOpen={examModalOpen}
@@ -31,6 +34,11 @@ export default function AdminPortalPage() {
             isOpen={exportModalOpen}
             paper={selectedPaper}
             onClose={() => setExportModalOpen(false)}
+          />
+          <LeaderboardModal
+            isOpen={leaderboardModalOpen}
+            paper={selectedPaper}
+            onClose={() => setLeaderboardModalOpen(false)}
           />
         </div>
       ) : (

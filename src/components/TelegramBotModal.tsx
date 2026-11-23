@@ -51,10 +51,8 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
   const [copiedMessage, setCopiedMessage] = useState(false);
   const [copiedQuizBotFormat, setCopiedQuizBotFormat] = useState(false);
 
-  // Bot Settings State
-  const [showBotSettings, setShowBotSettings] = useState(false);
-  const [botConfig, setBotConfig] = useState<TelegramBotConfig>(() => getTelegramBotConfig());
-  const [botConfigSaved, setBotConfigSaved] = useState(false);
+  // Read Bot Settings configured by Admin
+  const botConfig = getTelegramBotConfig();
 
   if (!isOpen || !user) return null;
 
@@ -157,16 +155,6 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     setTimeout(() => setCopiedQuizBotFormat(false), 2000);
   };
 
-  const handleSaveBotSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    setTelegramBotConfig(botConfig);
-    setBotConfigSaved(true);
-    setTimeout(() => {
-      setBotConfigSaved(false);
-      setShowBotSettings(false);
-    }, 1200);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
       <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 max-h-[92vh] flex flex-col">
@@ -188,13 +176,6 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
           <div className="flex items-center space-x-1.5">
             <button
-              onClick={() => setShowBotSettings(!showBotSettings)}
-              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white"
-              title="બોટ સેટિંગ્સ"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-            <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/20 text-white/80 hover:text-white"
             >
@@ -205,72 +186,6 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-5 overflow-y-auto space-y-4">
-          {/* Custom Bot Settings Panel */}
-          {showBotSettings ? (
-            <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-sky-900 flex items-center gap-1.5">
-                  <Settings className="w-4 h-4 text-sky-600" />
-                  <span>ટેલિગ્રામ બોટ સેટિંગ્સ (Bot Configuration)</span>
-                </span>
-                <button
-                  onClick={() => setShowBotSettings(false)}
-                  className="text-xs text-slate-500 hover:text-slate-800"
-                >
-                  પાછા જાઓ
-                </button>
-              </div>
-
-              <p className="text-[11px] text-slate-600">
-                જો તમે તમારો પોતાનો ટેલિગ્રામ બોટ (@BotFather વડે) બનાવ્યો હોય, તો તેનું યુઝરનેમ અને ટોકન અહીં સેવ કરી શકો છો.
-              </p>
-
-              <form onSubmit={handleSaveBotSettings} className="space-y-2.5 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">
-                    Bot Username (without @) *
-                  </label>
-                  <input
-                    type="text"
-                    value={botConfig.botUsername}
-                    onChange={(e) => setBotConfig({ ...botConfig, botUsername: e.target.value.replace(/^@/, '') })}
-                    placeholder="GsrtcMockQuizBot"
-                    required
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">
-                    Bot Token (from @BotFather)
-                  </label>
-                  <input
-                    type="password"
-                    value={botConfig.botToken}
-                    onChange={(e) => setBotConfig({ ...botConfig, botToken: e.target.value })}
-                    placeholder="123456789:ABCdefGHIjkl..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
-                  />
-                </div>
-
-                {botConfigSaved && (
-                  <div className="text-xs font-bold text-emerald-700 bg-emerald-50 p-2 rounded-lg">
-                    બોટ સેટિંગ્સ સેવ થઈ ગઈ! ✓
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-xl bg-sky-600 text-white font-bold hover:bg-sky-700"
-                  >
-                    સેવ કરો
-                  </button>
-                </div>
-              </form>
-            </div>
-          ) : null}
-
           {/* Form Step: Configure Title, Subject, Time */}
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
             <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1.5">

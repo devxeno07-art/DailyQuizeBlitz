@@ -70,6 +70,40 @@ export interface TelegramQuiz {
 export interface TelegramBotConfig {
   botToken: string;
   botUsername: string; // without @, e.g. "GsrtcMockQuizBot"
+  defaultTimePerQuestion?: number; // e.g. 30
+  targetGroupId?: string; // e.g. "@gsrtc_discussion" or chat ID "-100xxxx"
+  webhookUrl?: string;
+}
+
+export interface ScheduledDailyTest {
+  id: string;
+  title: string;
+  mode: 'all_mixed' | 'subject_wise';
+  subject?: string;
+  questionCount: number;
+  timePerQuestion: number;
+  scheduledTime: string; // e.g. "21:00"
+  isActive: boolean;
+  targetGroupId?: string;
+  lastRunAt?: string;
+  lastGeneratedCode?: string;
+  createdAt: string;
+}
+
+export interface TestAttemptResult {
+  id: string;
+  testCode: string;
+  paperId: string;
+  paperTitle: string;
+  subject: string;
+  studentName: string;
+  studentPhone: string;
+  score: number;
+  totalQuestions: number;
+  wrongCount: number;
+  percentage: number;
+  grade: string;
+  completedAt: string;
 }
 
 export interface FirebaseConfig {
