@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Paper } from "@/types";
-import { deletePaper } from "@/lib/storage";
+import { Paper, Question } from "@/types";
+import { deletePaper, savePaper, generateTestCode } from "@/lib/storage";
+import { SAMPLE_GSRTC_PAPER } from "@/data/samplePaper";
 import { 
   Plus, 
   Search, 
@@ -20,7 +21,11 @@ import {
   AlertCircle,
   Bot,
   Copy,
-  Trophy
+  Trophy,
+  Upload,
+  FileJson,
+  CopyPlus,
+  Loader2
 } from "lucide-react";
 
 interface PaperListProps {
@@ -45,6 +50,9 @@ export const PaperList: React.FC<PaperListProps> = ({
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!user) return null;
 
@@ -77,6 +85,149 @@ export const PaperList: React.FC<PaperListProps> = ({
       setDeletingId(paperId);
       await deletePaper(paperId);
       setDeletingId(null);
+    }
+  };
+
+  // Clone any paper into a fresh owned copy (new ids + new test code)
+  const buildPaperForUser = (source: Partial<Paper>, titleSuffix = ""): Paper => {
+    const sourceQuestions = Array.isArray(source.questions) ? source.questions : [];
+    const now = new Date().toISOString();
+    const newId = `paper_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    const questions: Question[] = sourceQuestions.slice(0, 500).map((q: any, idx: number) => {
+      const options = Array.isArray(q?.options)
+        ? q.options.map((o: any) => String(o ?? "")).slice(0, 10)
+        : [];
+      const correctAnswer = Math.min(
+        Math.max(0, Number(q?.correctAnswer) || 0),
+        Math.max(0, options.length - 1)
+      );
+
+      return {
+        id: `q_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 5)}`,
+        paperId: newId,
+        questionNumber: idx + 1,
+        questionText: String(q?.questionText || "").trim(),
+        options,
+        correctAnswer,
+        explanation: q?.explanation ? String(q.explanation) : "",
+        difficulty: ["easy", "medium", "hard"].includes(q?.difficulty) ? q.difficulty : undefined,
+        tags: Array.isArray(q?.tags) ? q.tags.map((t: any) => String(t)) : undefined,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+
+    return {
+      id: newId,
+      userId: user.id,
+      userName: user.name,
+      title: `${String(source.title || "ઈમ્પોર્ટેડ પેપર")}${titleSuffix}`.slice(0, 200),
+      subject: String(source.subject || "").slice(0, 200),
+      category: String(source.category || "GSRTC").slice(0, 80),
+      description: source.description ? String(source.description).slice(0, 1000) : undefined,
+      targetQuestions: Math.max(1, Number(source.targetQuestions) || questions.length || 50),
+      timeLimitMinutes: Math.max(1, Number(source.timeLimitMinutes) || 60),
+      isPublic: Boolean(source.isPublic),
+      testCode: generateTestCode(source.category || "GSRTC"),
+      sourcePaperId: source.sourcePaperId,
+      sourcePdfUrl: source.sourcePdfUrl,
+      isDigitizedCompleted: source.isDigitizedCompleted,
+      questions,
+      createdAt: now,
+      updatedAt: now,
+    };
+  };
+
+  const handleImportFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    setImporting(true);
+    setImportMsg(null);
+    let imported = 0;
+    const errors: string[] = [];
+
+    for (const file of files.slice(0, 10)) {
+      try {
+        const raw = await file.text();
+        const parsed = JSON.parse(raw);
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+
+        for (let i = 0; i < list.length; i++) {
+          const item = list[i];
+          const sourceQuestions = Array.isArray(item?.questions) ? item.questions : [];
+          const validQuestions = sourceQuestions.filter(
+            (q: any) =>
+              q &&
+              typeof q.questionText === "string" &&
+              q.questionText.trim().length > 0 &&
+              Array.isArray(q.options) &&
+              q.options.filter((o: any) => String(o ?? "").trim().length > 0).length >= 2
+          );
+
+          if (validQuestions.length === 0) {
+            errors.push(`${file.name}: કોઈ માન્ય પ્રશ્ન મળ્યો નથી`);
+            continue;
+          }
+
+          const paper = buildPaperForUser(
+            { ...item, questions: validQuestions },
+            list.length > 1 ? ` (${i + 1})` : ""
+          );
+          await savePaper(paper);
+          imported++;
+        }
+      } catch (err: any) {
+        errors.push(`${file.name}: ${err?.message || "અમાન્ય JSON"}`);
+      }
+    }
+
+    setImporting(false);
+    if (imported > 0) {
+      setImportMsg({
+        ok: true,
+        text:
+          `${imported} પેપર સફળતાપૂર્વક ઈમ્પોર્ટ થયું.` +
+          (errors.length ? ` (${errors.length} એન્ટ્રીમાં ભૂલ હતી)` : ""),
+      });
+    } else {
+      setImportMsg({
+        ok: false,
+        text: errors.join(" • ") || "કૃપા કરીને માન્ય MCQ Master JSON ફાઈલ પસંદ કરો.",
+      });
+    }
+  };
+
+  const handleDuplicatePaper = async (paper: Paper, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await savePaper(buildPaperForUser(paper, " (કોપી)"));
+    } catch (err: any) {
+      alert(err?.message || "પેપરની કોપી બનાવી શકાઈ નહીં.");
+    }
+  };
+
+  const handleLoadSample = async () => {
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const paper = buildPaperForUser(
+        SAMPLE_GSRTC_PAPER as unknown as Partial<Paper>
+      );
+      await savePaper(paper);
+      setImportMsg({
+        ok: true,
+        text: "GSRTC નમૂનો પેપર ઉમેરાયું! હવે ટેસ્ટ આપો અથવા ટેલિગ્રામ કોડ બનાવો.",
+      });
+    } catch (err: any) {
+      setImportMsg({
+        ok: false,
+        text: err?.message || "નમૂનો પેપર લોડ કરી શકાયું નહીં.",
+      });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -164,6 +315,59 @@ export const PaperList: React.FC<PaperListProps> = ({
           </button>
         </div>
 
+        {/* Import / sample quick actions */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
+            title="અગાઉ એક્સપોર્ટ કરેલી JSON ફાઈલ ઈમ્પોર્ટ કરો"
+          >
+            {importing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
+            ) : (
+              <Upload className="w-3.5 h-3.5 text-brand-600" />
+            )}
+            <span>JSON ઈમ્પોર્ટ</span>
+          </button>
+
+          <button
+            onClick={handleLoadSample}
+            disabled={importing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-800 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
+            title="25 GSRTC પ્રશ્નોનો તૈયાર નમૂનો ઉમેરો"
+          >
+            <FileJson className="w-3.5 h-3.5 text-emerald-600" />
+            <span>GSRTC નમૂનો લોડ કરો</span>
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            multiple
+            className="hidden"
+            onChange={handleImportFiles}
+          />
+        </div>
+
+        {importMsg && (
+          <div
+            className={`p-2.5 rounded-xl text-xs font-semibold border flex items-start gap-2 animate-fadeIn ${
+              importMsg.ok
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-rose-50 border-rose-200 text-rose-800"
+            }`}
+          >
+            {importMsg.ok ? (
+              <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            )}
+            <span>{importMsg.text}</span>
+          </div>
+        )}
+
         {categories.length > 2 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             {categories.map((cat) => (
@@ -198,13 +402,23 @@ export const PaperList: React.FC<PaperListProps> = ({
               : "બીજું કંઈક શોધો અથવા ફિલ્ટર બદલો."}
           </p>
           {papers.length === 0 && (
-            <button
-              onClick={onOpenCreate}
-              className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700"
-            >
-              <Plus className="w-4 h-4" />
-              <span>પ્રથમ પેપર બનાવો</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={onOpenCreate}
+                className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700"
+              >
+                <Plus className="w-4 h-4" />
+                <span>પ્રથમ પેપર બનાવો</span>
+              </button>
+              <button
+                onClick={handleLoadSample}
+                disabled={importing}
+                className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-xs hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <FileJson className="w-4 h-4" />
+                <span>GSRTC નમૂનો લોડ કરો</span>
+              </button>
+            </div>
           )}
         </div>
       ) : (
@@ -229,7 +443,7 @@ export const PaperList: React.FC<PaperListProps> = ({
                       {paper.testCode && (
                         <span 
                           onClick={(e) => handleCopyCode(paper, e)}
-                          className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-100 flex items-center gap-1 shadow-xs cursor-pointer"
+                          className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-100 flex items-center gap-1 shadow-sm cursor-pointer"
                           title="કમાન્ડ કોપી કરવા ક્લિક કરો (/quiz CODE)"
                         >
                           <Bot className="w-3 h-3 text-sky-600" />
@@ -339,6 +553,14 @@ export const PaperList: React.FC<PaperListProps> = ({
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                       <span>એડિટ</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => handleDuplicatePaper(paper, e)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                      title="આ પેપરની કોપી બનાવો (Duplicate)"
+                    >
+                      <CopyPlus className="w-3.5 h-3.5" />
                     </button>
 
                     <button

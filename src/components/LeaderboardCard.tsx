@@ -162,6 +162,17 @@ export const LeaderboardCard: React.FC<LeaderboardCardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
+              {entries.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-10 px-4 text-center text-slate-400 text-xs">
+                    😕 હજુ સુધી કોઈ વિદ્યાર્થીએ આ ટેસ્ટ આપ્યો નથી.
+                    <br />
+                    <span className="text-[11px] text-slate-500">
+                      ટેસ્ટ આપ્યા પછી પરિણામ અહીં અને ટેલિગ્રામ લીડરબોર્ડમાં દેખાશે.
+                    </span>
+                  </td>
+                </tr>
+              )}
               {entries.map((entry) => (
                 <tr 
                   key={entry.rank}
@@ -183,7 +194,7 @@ export const LeaderboardCard: React.FC<LeaderboardCardProps> = ({
                     <div className="flex items-center space-x-1.5">
                       <span className="font-semibold text-slate-100">{entry.name}</span>
                       {entry.isCurrentUser && (
-                        <span className="text-[9px] bg-brand-600 text-white px-1.5 py-0.2 rounded-full">
+                        <span className="text-[9px] bg-brand-600 text-white px-1.5 py-0.5 rounded-full">
                           તમે (You)
                         </span>
                       )}

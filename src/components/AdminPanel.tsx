@@ -8,7 +8,8 @@ import {
   SourcePaper, 
   TelegramQuiz, 
   TelegramBotConfig, 
-  ScheduledDailyTest 
+  ScheduledDailyTest,
+  ServerOverviewStats
 } from "@/types";
 import { 
   subscribeAllUsers, 
@@ -23,7 +24,8 @@ import {
   getLocalScheduledTests,
   saveScheduledDailyTest,
   deleteScheduledDailyTest,
-  dispatchScheduledDailyTest
+  dispatchScheduledDailyTest,
+  fetchServerScheduledTests
 } from "@/lib/storage";
 import { getStoredFirebaseConfig, initFirebase } from "@/lib/firebase";
 import { 
@@ -57,7 +59,10 @@ import {
   AlertCircle,
   Copy,
   Check,
-  Radio
+  Radio,
+  LogOut,
+  Webhook,
+  Server
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -67,7 +72,7 @@ interface AdminPanelProps {
   onInspectPaper?: (paper: Paper) => void;
 }
 
-const DEFAULT_ADMIN_PIN = "7777";
+const PIN_MAX_LENGTH = 64;
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   isOpen = true,
@@ -77,6 +82,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   const [pin, setPin] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState("");
   const [activeTab, setActiveTab] = useState<"users" | "digitization" | "scheduler" | "bot_config">("users");
 
@@ -91,6 +98,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [botConfigSaved, setBotConfigSaved] = useState(false);
   const [testingBot, setTestingBot] = useState(false);
   const [botTestResult, setBotTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [isPollingActive, setIsPollingActive] = useState(false);
+  const [pollLogs, setPollLogs] = useState<string[]>([]);
+  const [settingMenuBtn, setSettingMenuBtn] = useState(false);
+  const [menuBtnMsg, setMenuBtnMsg] = useState<{ ok: boolean; message: string } | null>(null);
+  const [botSaveMsg, setBotSaveMsg] = useState<{ ok: boolean; message: string } | null>(null);
+  const [webhookBusy, setWebhookBusy] = useState<string | null>(null);
+  const [webhookMsg, setWebhookMsg] = useState<{ ok: boolean; message: string } | null>(null);
+  const [serverStats, setServerStats] = useState<ServerOverviewStats | null>(null);
+  const [serverConfigInfo, setServerConfigInfo] = useState({
+    hasBotToken: false,
+    hasWebhookSecret: false,
+  });
 
   // Daily Scheduler State
   const [scheduledTests, setScheduledTests] = useState<ScheduledDailyTest[]>([]);
@@ -127,13 +146,92 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   });
   const [configSaved, setConfigSaved] = useState(false);
 
+  // Verify the HttpOnly admin session cookie on mount.
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/admin/session", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (mounted) setIsAuthenticated(Boolean(data.authenticated));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setIsAuthChecking(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const refreshServerStats = async () => {
+    try {
+      const res = await fetch("/api/admin/stats", { cache: "no-store" });
+      if (!res.ok) {
+        if (res.status === 401) setIsAuthenticated(false);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (data.stats) setServerStats(data.stats);
+    } catch (e) {
+      // stats are best-effort
+    }
+  };
+
   // Load users, papers, source papers, scheduler & bot config
   useEffect(() => {
     if (!isAuthenticated) return;
+    let active = true;
 
     setSourcePapers(getLocalSourcePapers());
     setScheduledTests(getLocalScheduledTests());
     setBotConfig(getTelegramBotConfig());
+
+    const loadServerData = async () => {
+      try {
+        const [cfgRes, statsRes, schedules] = await Promise.all([
+          fetch("/api/telegram/config", { cache: "no-store" }),
+          fetch("/api/admin/stats", { cache: "no-store" }),
+          fetchServerScheduledTests().catch(() => [] as ScheduledDailyTest[]),
+        ]);
+
+        if (!active) return;
+
+        const cfg = await cfgRes.json().catch(() => ({}));
+        if (cfgRes.ok && cfg && cfg.botUsername) {
+          setServerConfigInfo({
+            hasBotToken: Boolean(cfg.hasBotToken),
+            hasWebhookSecret: Boolean(cfg.hasWebhookSecret),
+          });
+          setBotConfig((prev) => ({
+            ...prev,
+            ...cfg,
+            botToken: "",
+            webhookSecret: "",
+          }));
+        } else if (cfgRes.status === 401) {
+          setIsAuthenticated(false);
+          return;
+        }
+
+        if (statsRes.status === 401) {
+          setIsAuthenticated(false);
+          return;
+        }
+
+        const stats = await statsRes.json().catch(() => ({}));
+        if (statsRes.ok && stats.stats) setServerStats(stats.stats);
+
+        if (schedules.length > 0) {
+          setScheduledTests(schedules);
+        } else if (getLocalScheduledTests().length === 0) {
+          setScheduledTests([]);
+        }
+      } catch (e) {
+        // Offline/local mode — fall back to local data already loaded
+      }
+    };
+
+    loadServerData();
 
     const unsubUsers = subscribeAllUsers((updatedUsers) => {
       setUsers(updatedUsers);
@@ -144,6 +242,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
 
     return () => {
+      active = false;
       unsubUsers();
       unsubPapers();
     };
@@ -151,14 +250,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   if (!isOpen && !standalone) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === DEFAULT_ADMIN_PIN || pin === "admin") {
-      setIsAuthenticated(true);
-      setAuthError("");
-    } else {
-      setAuthError("ખોટો PIN! ડિફોલ્ટ PIN '7777' છે.");
+    setAuthError("");
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setIsAuthenticated(true);
+        setPin("");
+      } else {
+        setAuthError(data.error || "ખોટો Admin PIN.");
+      }
+    } catch (e) {
+      setAuthError("સર્વર સાથે કનેક્ટ થઈ શકાયું નહીં. ફરી પ્રયાસ કરો.");
+    } finally {
+      setIsLoggingIn(false);
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin/logout", { method: "POST" });
+    } catch (e) {}
+    setIsAuthenticated(false);
+    setPin("");
+    setServerStats(null);
   };
 
   const totalQuestions = allPapers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
@@ -242,9 +364,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       targetGroupId: schedTargetGroup.trim() || botConfig.targetGroupId || "",
       createdAt: new Date().toISOString(),
     };
-    await saveScheduledDailyTest(newSchedule);
-    setScheduledTests(getLocalScheduledTests());
-    alert("ડેઇલી ટેસ્ટ શેડ્યુલ સફળતાપૂર્વક સેવ થયું!");
+    try {
+      await saveScheduledDailyTest(newSchedule);
+      setScheduledTests(getLocalScheduledTests());
+      alert("ડેઇલી ટેસ્ટ શેડ્યુલ સર્વર પર સફળતાપૂર્વક સેવ થયું! હવે ક્રોન આપોઆપ ચલાવશે.");
+      refreshServerStats();
+    } catch (err: any) {
+      alert(err?.message || "શેડ્યુલ સેવ થઈ શક્યું નહીં.");
+    }
   };
 
   const handleDispatchNow = async (scheduleId: string) => {
@@ -257,8 +384,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       } else {
         alert("પસંદ કરેલ કેટેગરીમાં પૂરતા પ્રશ્નો ઉપલબ્ધ નથી.");
       }
-    } catch (e) {
-      alert("ટેસ્ટ મોકલવામાં કોઈ ક્ષતિ થઈ.");
+    } catch (e: any) {
+      alert(e?.message || "ટેસ્ટ મોકલવામાં કોઈ ક્ષતિ થઈ.");
     } finally {
       setDispatchingId(null);
     }
@@ -266,48 +393,217 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleDeleteSchedule = async (id: string) => {
     if (confirm("શું તમે આ ડેઇલી ટેસ્ટ શેડ્યુલ કાઢી નાખવા માંગો છો?")) {
-      await deleteScheduledDailyTest(id);
-      setScheduledTests(getLocalScheduledTests());
+      try {
+        await deleteScheduledDailyTest(id);
+        setScheduledTests(getLocalScheduledTests());
+        refreshServerStats();
+      } catch (err: any) {
+        alert(err?.message || "શેડ્યુલ ડિલીટ થઈ શક્યું નહીં.");
+      }
     }
   };
 
   const handleToggleScheduleActive = async (s: ScheduledDailyTest) => {
     const updated = { ...s, isActive: !s.isActive };
-    await saveScheduledDailyTest(updated);
-    setScheduledTests(getLocalScheduledTests());
+    try {
+      await saveScheduledDailyTest(updated);
+      setScheduledTests(getLocalScheduledTests());
+    } catch (err: any) {
+      alert(err?.message || "શેડ્યુલ અપડેટ થઈ શક્યું નહીં.");
+    }
   };
 
-  const handleSaveBotConfig = (e: React.FormEvent) => {
+  // Local Polling loop for localhost development or live test answering
+  useEffect(() => {
+    if (!isPollingActive || !(serverConfigInfo.hasBotToken || botConfig.botToken)) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/telegram/poll", { cache: "no-store" });
+        const data = await res.json();
+        if (!isMounted) return;
+        if (res.status === 401) {
+          setPollLogs((prev) => [
+            `[${new Date().toLocaleTimeString()}] Unauthorized — admin session expired`,
+            ...prev,
+          ].slice(0, 5));
+          setIsPollingActive(false);
+          return;
+        }
+        if (data.ok && data.processedCount > 0) {
+          const newLogs = data.processed.map(
+            (p: any) => `[${new Date().toLocaleTimeString()}] Action: ${p.res?.action || "Handled"}`
+          );
+          setPollLogs((prev) => [...newLogs, ...prev].slice(0, 5));
+        }
+        if (data.finalized > 0) {
+          setPollLogs((prev) => [
+            `[${new Date().toLocaleTimeString()}] ${data.finalized} ટેસ્ટનું અંતિમ લીડરબોર્ડ મોકલાયું`,
+            ...prev,
+          ].slice(0, 5));
+        }
+      } catch (e) {
+        // quiet error
+      }
+    }, 3500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isPollingActive, botConfig.botToken, serverConfigInfo.hasBotToken]);
+
+  const handleSaveBotConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    setTelegramBotConfig(botConfig);
-    setBotConfigSaved(true);
-    setTimeout(() => setBotConfigSaved(false), 2500);
+    setBotSaveMsg(null);
+    try {
+      const res = await fetch("/api/telegram/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(botConfig),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          setIsAuthenticated(false);
+          setBotSaveMsg({ ok: false, message: "Admin સેશન સમાપ્ત થઈ ગયું. ફરી લોગિન કરો." });
+          return;
+        }
+        setBotSaveMsg({ ok: false, message: data.error || "બોટ સેટિંગ્સ સેવ થઈ શક્યા નહીં." });
+        return;
+      }
+
+      const saved = data.config || {};
+      setServerConfigInfo({
+        hasBotToken: Boolean(saved.hasBotToken),
+        hasWebhookSecret: Boolean(saved.hasWebhookSecret),
+      });
+      // Drop any newly typed token from UI state; the server keeps it.
+      const next = { ...botConfig, ...saved, botToken: "", webhookSecret: "" };
+      setBotConfig(next);
+      setTelegramBotConfig(next);
+      setBotConfigSaved(true);
+      setBotSaveMsg({ ok: true, message: "બોટ સેટિંગ્સ સર્વર પર સફળતાપૂર્વક સેવ થઈ ગયા છે!" });
+      setTimeout(() => setBotConfigSaved(false), 2500);
+    } catch (err: any) {
+      setBotSaveMsg({ ok: false, message: err?.message || "નેટવર્ક એરર: સેવ થઈ શક્યું નહીં." });
+    }
+  };
+
+  const handleWebhook = async (action: "set" | "delete" | "info") => {
+    setWebhookBusy(action);
+    setWebhookMsg(null);
+    try {
+      const res = await fetch("/api/telegram/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (res.status === 401) setIsAuthenticated(false);
+        setWebhookMsg({ ok: false, message: data.error || "Webhook કમાન્ડ નિષ્ફળ ગયો." });
+        return;
+      }
+
+      if (action === "info") {
+        const info = data.result?.result || {};
+        setWebhookMsg({
+          ok: true,
+          message:
+            `URL: ${info.url || "સેટ નથી"} • Pending: ${info.pending_update_count ?? 0}` +
+            (info.last_error_message ? ` • છેલ્લી ભૂલ: ${info.last_error_message}` : ""),
+        });
+      } else if (action === "set") {
+        setWebhookMsg({
+          ok: Boolean(data.ok),
+          message: data.ok
+            ? `Webhook સફળતાપૂર્વક સેટ થયું: ${data.url || ""}`
+            : data.error || "Webhook સેટ થઈ શક્યું નહીં.",
+        });
+      } else {
+        setWebhookMsg({
+          ok: Boolean(data.ok),
+          message: data.ok
+            ? "Webhook દૂર કરવામાં આવ્યું. હવે લોકલ polling વાપરી શકાય છે."
+            : data.error || "Webhook દૂર કરી શકાયું નહીં.",
+        });
+      }
+
+      // Refresh whether a secret/token exists after the action.
+      const cfgRes = await fetch("/api/telegram/config", { cache: "no-store" });
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json().catch(() => ({}));
+        setServerConfigInfo({
+          hasBotToken: Boolean(cfg.hasBotToken),
+          hasWebhookSecret: Boolean(cfg.hasWebhookSecret),
+        });
+        setBotConfig((prev) => ({ ...prev, ...cfg, botToken: "", webhookSecret: "" }));
+      }
+    } catch (err: any) {
+      setWebhookMsg({ ok: false, message: err?.message || "નેટવર્ક એરર." });
+    } finally {
+      setWebhookBusy(null);
+    }
+  };
+
+  const handleSetMenuButton = async () => {
+    if (!serverConfigInfo.hasBotToken && !botConfig.botToken) {
+      alert("કૃપા કરીને પહેલા બોટ ટોકન સેવ કરો.");
+      return;
+    }
+    setSettingMenuBtn(true);
+    setMenuBtnMsg(null);
+    try {
+      const res = await fetch("/api/telegram/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...botConfig, setupMenuButton: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok && data.menuResult?.ok) {
+        setMenuBtnMsg({ ok: true, message: "ટેલિગ્રામ ચેટ મેનુ બટન (Mini App) સફળતાપૂર્વક સેટ થઈ ગયું!" });
+      } else {
+        setMenuBtnMsg({
+          ok: false,
+          message: data.menuResult?.description || data.error || "મેનુ બટન માટે HTTPS લિંક જરૂરી છે (દા.ત. Vercel deployment URL).",
+        });
+      }
+    } catch (e: any) {
+      setMenuBtnMsg({ ok: false, message: e.message || "Failed to set menu button" });
+    } finally {
+      setSettingMenuBtn(false);
+    }
   };
 
   const handleTestBotConnection = async () => {
-    if (!botConfig.botToken) {
-      setBotTestResult({ ok: false, message: "કૃપા કરીને પહેલા બોટ ટોકન નાખો." });
+    if (!serverConfigInfo.hasBotToken && !botConfig.botToken) {
+      setBotTestResult({ ok: false, message: "કૃપા કરીને પહેલા બોટ ટોકન સેવ કરો." });
       return;
     }
     setTestingBot(true);
     setBotTestResult(null);
     try {
-      const res = await fetch(`https://api.telegram.org/bot${botConfig.botToken}/getMe`);
+      const res = await fetch("/api/telegram/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test" }),
+      });
       const data = await res.json();
-      if (data.ok && data.result) {
+      if (res.ok && data.ok) {
         setBotTestResult({
           ok: true,
-          message: `કનેક્શન સફળ! બોટ યુઝરનેમ: @${data.result.username} (${data.result.first_name})`,
+          message: `કનેક્શન સફળ! બોટ યુઝરનેમ: @${data.botUsername} (${data.botName || ""})`,
         });
-        if (!botConfig.botUsername && data.result.username) {
-          const updated = { ...botConfig, botUsername: data.result.username };
-          setBotConfig(updated);
-          setTelegramBotConfig(updated);
+        if (data.botUsername && data.botUsername !== botConfig.botUsername) {
+          setBotConfig((prev) => ({ ...prev, botUsername: data.botUsername }));
         }
       } else {
         setBotTestResult({
           ok: false,
-          message: `કનેક્શન નિષ્ફળ: ${data.description || "અમાન્ય બોટ ટોકન"}`,
+          message: `કનેક્શન નિષ્ફળ: ${data.error || data.description || "અમાન્ય બોટ ટોકન"}`,
         });
       }
     } catch (e) {
@@ -369,6 +665,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <Settings className="w-4 h-4" />
               </button>
             )}
+            {isAuthenticated && (
+              <button
+                onClick={handleLogout}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-500/30 text-slate-300 hover:text-white transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
             {standalone ? (
               <a
                 href="/"
@@ -389,7 +694,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Auth Gate if not logged in */}
-        {!isAuthenticated ? (
+        {isAuthChecking ? (
+          <div className="p-10 max-w-sm mx-auto text-center space-y-3 my-auto">
+            <RefreshCw className="w-7 h-7 text-indigo-600 animate-spin mx-auto" />
+            <p className="text-sm font-bold text-slate-700">Admin સેશન ચકાસી રહ્યું છે...</p>
+            <p className="text-xs text-slate-500">કૃપા કરીને થોડી સેકન્ડ રાહ જુઓ.</p>
+          </div>
+        ) : !isAuthenticated ? (
           <div className="p-8 max-w-sm mx-auto text-center space-y-4 my-auto">
             <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
               <Lock className="w-7 h-7" />
@@ -397,17 +708,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div>
               <h4 className="font-bold text-slate-900 text-lg">Admin સુરક્ષા પિન</h4>
               <p className="text-xs text-slate-500 mt-1">
-                એડમિન કંટ્રોલ સેન્ટર ખોલવા માટે સુરક્ષા PIN દાખલ કરો. (Default: <strong>7777</strong>)
+                એડમિન કંટ્રોલ સેન્ટર ખોલવા માટે સુરક્ષા PIN દાખલ કરો. PIN સર્વર પર{" "}
+                <code className="bg-slate-100 px-1 rounded">ADMIN_PIN</code> તરીકે સેટ થાય છે.
               </p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-3">
               <input
                 type="password"
-                maxLength={8}
+                maxLength={PIN_MAX_LENGTH}
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="PIN (દા.ત. 7777)"
+                placeholder="Admin PIN"
                 className="w-full text-center text-xl font-mono tracking-widest px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 autoFocus
               />
@@ -416,9 +728,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               )}
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 transition-all"
+                disabled={isLoggingIn}
+                className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 transition-all disabled:opacity-50"
               >
-                અનલોક કરો (Unlock)
+                {isLoggingIn ? "ચકાસી રહ્યું છે..." : "અનલોક કરો (Unlock)"}
               </button>
             </form>
           </div>
@@ -463,6 +776,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="text-[10px] text-slate-500 mt-0.5">Google Drive સોર્સ</div>
               </div>
             </div>
+
+            {/* Live server overview */}
+            {serverStats && (
+              <div className="p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
+                    <Server className="w-4 h-4 text-emerald-400" />
+                    <span>લાઈવ સર્વર આંકડા (Server Overview)</span>
+                  </div>
+                  <button
+                    onClick={refreshServerStats}
+                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    રિફ્રેશ
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+                  {[
+                    { label: "ક્વિઝ", value: serverStats.quizzes },
+                    { label: "પ્રશ્નો", value: serverStats.totalQuizQuestions },
+                    { label: "સેશન્સ", value: serverStats.sessions },
+                    { label: "સહભાગીઓ", value: serverStats.participants },
+                    { label: "એટેમ્પ્ટ્સ", value: serverStats.attempts },
+                    { label: "સરેરાશ %", value: `${serverStats.averagePercentage}%` },
+                  ].map((item) => (
+                    <div key={item.label} className="p-2 rounded-xl bg-white/5 border border-white/10">
+                      <div className="text-base font-black text-emerald-300">{item.value}</div>
+                      <div className="text-[10px] text-slate-400 font-semibold">{item.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-400">
+                  <span>💾 સ્ટોરેજ: <strong className="text-slate-200">{serverStats.storageMode}</strong></span>
+                  <span>🔗 Webhook URL: <strong className="text-slate-200">{serverStats.webhookConfigured ? "configured ✓" : "not set"}</strong></span>
+                  <span>📅 શેડ્યુલ્સ: <strong className="text-slate-200">{serverStats.schedules}</strong></span>
+                  <span>🎯 ચાલુ સેશન્સ: <strong className="text-slate-200">{serverStats.activeSessions}</strong></span>
+                </div>
+              </div>
+            )}
 
             {/* Admin Tabs */}
             <div className="flex border-b border-slate-200 space-x-2 sm:space-x-4 overflow-x-auto no-scrollbar">
@@ -807,6 +1160,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
+                <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-[11px] text-purple-900 flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <span>
+                    આ શેડ્યુલ્સ સર્વર પર સેવ થાય છે અને <code className="bg-white/70 px-1 rounded">/api/cron/tick</code> દ્વારા આપોઆપ ચાલે છે (Vercel Cron અથવા લોકલ બોટ ડેમોન). એડમિન પેનલ ખુલ્લી હોવી જરૂરી નથી.
+                  </span>
+                </div>
+
                 {/* Last Dispatched Banner */}
                 {lastDispatchedQuiz && (
                   <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg space-y-2 animate-fadeIn">
@@ -958,7 +1318,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   onClick={() => setSchedSubject(subj)}
                                   className={`p-2.5 rounded-xl border text-left transition-all ${
                                     isSelected
-                                      ? "bg-purple-100 border-purple-500 text-purple-950 font-bold shadow-xs"
+                                      ? "bg-purple-100 border-purple-500 text-purple-950 font-bold shadow-sm"
                                       : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                                   }`}
                                 >
@@ -996,19 +1356,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       {/* Time per Question */}
                       <div>
-                        <label className="block font-bold text-slate-700 mb-1">
-                          પ્રશ્ન દીઠ સમય
+                        <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                          <span>પ્રશ્ન દીઠ સમય (Timer)</span>
+                          <span className="text-purple-700 font-mono text-xs">{schedTimePerQ} સેકન્ડ</span>
                         </label>
-                        <select
-                          value={schedTimePerQ}
-                          onChange={(e) => setSchedTimePerQ(Number(e.target.value))}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-800"
-                        >
-                          <option value={15}>૧૫ સેકન્ડ (Fast)</option>
-                          <option value={30}>૩૦ સેકન્ડ (Standard)</option>
-                          <option value={45}>૪૫ સેકન્ડ</option>
-                          <option value={60}>૬૦ સેકન્ડ (Detailed)</option>
-                        </select>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={10}
+                            max={600}
+                            value={schedTimePerQ || ""}
+                            onChange={(e) => setSchedTimePerQ(Number(e.target.value))}
+                            placeholder="સેકન્ડ ટાઈપ કરો"
+                            className="w-full pl-3 pr-16 py-2 rounded-xl border border-slate-300 font-bold font-mono text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                          <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold select-none">સેકન્ડ</span>
+                        </div>
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          {[15, 20, 25, 30, 45, 60].map((sec) => (
+                            <button
+                              key={sec}
+                              type="button"
+                              onClick={() => setSchedTimePerQ(sec)}
+                              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors ${
+                                schedTimePerQ === sec
+                                  ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                                  : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                              }`}
+                            >
+                              {sec}s
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       {/* Target Group */}
@@ -1124,14 +1503,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {/* TAB 4: TELEGRAM BOT SETTINGS */}
             {activeTab === "bot_config" && (
-              <div className="max-w-2xl space-y-6">
+              <div className="max-w-3xl space-y-6">
                 <div>
                   <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
                     <Bot className="w-5 h-5 text-sky-600" />
-                    <span>ટેલિગ્રામ બોટ કન્ફિગરેશન (Telegram Bot Settings)</span>
+                    <span>ટેલિગ્રામ બોટ & Mini App કંટ્રોલ (Telegram Bot & Admin Control)</span>
                   </h4>
                   <p className="text-xs text-slate-500">
-                    તમારા ટેલિગ્રામ બોટનું ટોકન અને યુઝરનેમ અહીં કન્ફિગર કરો જેથી ગ્રૂપમાં સીધા જ મોક ટેસ્ટ અને લીડરબોર્ડ પરિણામો મોકલી શકાય.
+                    તમારા ટેલિગ્રામ બોટનું ટોકન, એડમિન ID અને Mini App કન્ફિગર કરો જેથી ગ્રૂપમાં સીધા જ મોક ટેસ્ટ, પોલ્સ અને લીડરબોર્ડ ટેબલ પરિણામો મોકલી શકાય.
                   </p>
                 </div>
 
@@ -1159,7 +1538,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 )}
 
+                {menuBtnMsg && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold border flex items-center gap-2 animate-fadeIn ${
+                      menuBtnMsg.ok
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                        : "bg-amber-50 border-amber-300 text-amber-800"
+                    }`}
+                  >
+                    {menuBtnMsg.ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    )}
+                    <span>{menuBtnMsg.message}</span>
+                  </div>
+                )}
+
+                {botSaveMsg && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold border flex items-center gap-2 animate-fadeIn ${
+                      botSaveMsg.ok
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                        : "bg-rose-50 border-rose-300 text-rose-800"
+                    }`}
+                  >
+                    {botSaveMsg.ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                    )}
+                    <span>{botSaveMsg.message}</span>
+                  </div>
+                )}
+
                 <form onSubmit={handleSaveBotConfig} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 text-xs">
+                  {/* Bot Token */}
                   <div>
                     <label className="block font-bold text-slate-800 mb-1">
                       Telegram Bot Token (BotFather પાસેથી મળેલ) *
@@ -1168,16 +1582,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       type="password"
                       value={botConfig.botToken}
                       onChange={(e) => setBotConfig({ ...botConfig, botToken: e.target.value })}
-                      placeholder="દા.ત. 1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                      required
+                      placeholder={
+                        serverConfigInfo.hasBotToken
+                          ? "•••••• ટોકન સર્વર પર સેવ છે — બદલવા નવો ટોકન દાખલ કરો"
+                          : "દા.ત. 1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                      }
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
+                    <p className={`text-[11px] mt-1 ${serverConfigInfo.hasBotToken ? "text-emerald-600 font-semibold" : "text-amber-600 font-semibold"}`}>
+                      {serverConfigInfo.hasBotToken
+                        ? "✅ બોટ ટોકન સર્વર પર સુરક્ષિત રીતે સેવ છે. ખાલી છોડો તો જૂનો ટોકન જ રહેશે."
+                        : "⚠️ હજી કોઈ બોટ ટોકન સેવ થયેલ નથી."}
+                    </p>
                     <p className="text-[11px] text-slate-400 mt-1">
                       જો બોટ ન હોય, તો ટેલિગ્રામમાં <strong>@BotFather</strong> ને <code>/newbot</code> કમાન્ડ આપીને મિનિટોમાં બોટ ટોકન મેળવો.
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Bot Username */}
                     <div>
                       <label className="block font-bold text-slate-800 mb-1">
                         Bot Username (@ વગર)
@@ -1191,6 +1614,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       />
                     </div>
 
+                    {/* Admin Telegram ID */}
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        👑 Admin Telegram ID / Username (@ વગર)
+                      </label>
+                      <input
+                        type="text"
+                        value={botConfig.adminTelegramId || ""}
+                        onChange={(e) => setBotConfig({ ...botConfig, adminTelegramId: e.target.value.replace(/^@/, "").trim() })}
+                        placeholder="દા.ત. 123456789 અથવા your_tg_username"
+                        className="w-full px-3.5 py-2 rounded-xl border border-purple-300 bg-purple-50/40 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 font-bold"
+                      />
+                      <p className="text-[10px] text-purple-700 mt-1">
+                        આ ID ધરાવનાર યુઝર Telegram માં સીધા જ <code>/admin</code>, <code>/dispatch</code> અને <code>/stats</code> કમાન્ડ વાપરી શકશે.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Default Time Per Question */}
                     <div>
                       <label className="block font-bold text-slate-800 mb-1">
                         ડિફોલ્ટ સમય (સેકન્ડ પ્રતિ પ્રશ્ન)
@@ -1204,71 +1647,214 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                       />
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block font-bold text-slate-800 mb-1">
-                      ડિફોલ્ટ ટેલિગ્રામ ગ્રૂપ અથવા ચેનલ Username / Chat ID
-                    </label>
-                    <input
-                      type="text"
-                      value={botConfig.targetGroupId || ""}
-                      onChange={(e) => setBotConfig({ ...botConfig, targetGroupId: e.target.value })}
-                      placeholder="@gsrtc_discussion_group અથવા -100xxxxxxxxxx"
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      ડેઇલી મોક ટેસ્ટ શેડ્યુલર સીધા જ આ ગ્રૂપમાં ટેસ્ટ નોટિફિકેશન મોકલશે.
-                    </p>
-                  </div>
-
-                  {/* Webhook helper */}
-                  <div className="p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl space-y-1.5">
-                    <span className="font-bold text-sky-950 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-sky-600" />
-                      <span>વેબહૂક URL (Webhook Endpoint)</span>
-                    </span>
-                    <p className="text-[11px] text-slate-600">
-                      ગ્રૂપમાં <code>/quiz CODE</code> અથવા <code>/results CODE</code> કમાન્ડ્સ આપવા માટે આ વેબહૂક URL સેટ કરી શકો છો:
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <code className="text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-sky-200 font-mono text-slate-800 flex-1 truncate">
-                        {typeof window !== "undefined" ? `${window.location.origin}/api/telegram/webhook` : "/api/telegram/webhook"}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = `${window.location.origin}/api/telegram/webhook`;
-                          navigator.clipboard.writeText(url);
-                          alert("Webhook URL કોપી થઈ ગઈ!");
-                        }}
-                        className="px-2.5 py-1.5 rounded-lg bg-sky-600 text-white font-bold text-[11px]"
-                      >
-                        Copy
-                      </button>
+                    {/* Default Group */}
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        ડિફોલ્ટ Telegram ગ્રૂપ / ચેનલ ID
+                      </label>
+                      <input
+                        type="text"
+                        value={botConfig.targetGroupId || ""}
+                        onChange={(e) => setBotConfig({ ...botConfig, targetGroupId: e.target.value })}
+                        placeholder="@gsrtc_discussion_group અથવા -100xxxxxxxxxx"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 pt-2">
+                  {/* WebApp / Mini App URL */}
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span>📱 Telegram Mini App HTTPS URL (વૈકલ્પિક)</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Telegram requires HTTPS for Mini App</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={botConfig.webAppUrl || ""}
+                      onChange={(e) => setBotConfig({ ...botConfig, webAppUrl: e.target.value.trim() })}
+                      placeholder="દા.ત. https://your-project.vercel.app અથવા ngrok https URL"
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      આ લિંક વડે Telegram Mini App ખુલે છે જેથી મોબાઈલમાં યુઝર્સ સરળતાથી ટેસ્ટ બનાવી શકે છે.
+                    </p>
+                  </div>
+
+                  {/* Action Buttons: Menu Button & Connection Test */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={handleSetMenuButton}
+                      disabled={settingMenuBtn}
+                      className="px-3.5 py-2 rounded-xl border border-purple-300 bg-purple-50 text-purple-800 hover:bg-purple-100 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      <span>{settingMenuBtn ? "સેટ થઈ રહ્યું છે..." : "📌 Telegram Mini App Menu Button સેટ કરો"}</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleTestBotConnection}
                       disabled={testingBot}
-                      className="px-4 py-2.5 rounded-xl border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                      className="px-3.5 py-2 rounded-xl border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${testingBot ? "animate-spin" : ""}`} />
                       <span>{testingBot ? "ચકાસી રહ્યું છે..." : "બોટ કનેક્શન ટેસ્ટ કરો"}</span>
                     </button>
 
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center gap-1.5 transition-colors"
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>બોટ સેટિંગ્સ સેવ કરો</span>
-                    </button>
+                    <div className="ml-auto">
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center gap-1.5 transition-colors"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>બોટ સેટિંગ્સ સેવ કરો</span>
+                      </button>
+                    </div>
                   </div>
                 </form>
+
+                {/* Webhook Management */}
+                <div className="p-4 rounded-3xl bg-white border border-slate-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                        <Webhook className="w-4 h-4 text-sky-600" />
+                        <span>Telegram Webhook (Production)</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Production માં webhook વાપરો જેથી દરેક મેસેજ તરત જ પ્રોસેસ થાય. Localhost પર polling વાપરો.
+                      </p>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${
+                        serverConfigInfo.hasWebhookSecret
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-slate-50 text-slate-500 border-slate-200"
+                      }`}
+                    >
+                      {serverConfigInfo.hasWebhookSecret ? "Secret configured ✓" : "Secret not configured"}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleWebhook("set")}
+                      disabled={Boolean(webhookBusy) || !serverConfigInfo.hasBotToken}
+                      className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <Webhook className="w-3.5 h-3.5" />
+                      <span>{webhookBusy === "set" ? "સેટ થઈ રહ્યું છે..." : "Webhook સેટ કરો"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleWebhook("info")}
+                      disabled={Boolean(webhookBusy) || !serverConfigInfo.hasBotToken}
+                      className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${webhookBusy === "info" ? "animate-spin" : ""}`} />
+                      <span>માહિતી જુઓ</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleWebhook("delete")}
+                      disabled={Boolean(webhookBusy) || !serverConfigInfo.hasBotToken}
+                      className="px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Webhook દૂર કરો</span>
+                    </button>
+                  </div>
+
+                  {webhookMsg && (
+                    <div
+                      className={`p-3 rounded-xl text-xs font-semibold border break-words ${
+                        webhookMsg.ok
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                          : "bg-rose-50 border-rose-300 text-rose-800"
+                      }`}
+                    >
+                      {webhookMsg.message}
+                    </div>
+                  )}
+                </div>
+
+                {/* Local Polling Runner Section */}
+                <div className="p-4 rounded-3xl bg-slate-900 text-white space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">🔄 લોકલ બોટ રનર (Background Polling)</span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isPollingActive
+                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse"
+                              : "bg-slate-800 text-slate-400 border border-slate-700"
+                          }`}
+                        >
+                          {isPollingActive ? "● લાઈવ એક્ટિવ (Polling ON)" : "○ બંધ (Inactive)"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        જ્યારે તમે લોકલહોસ્ટ પર હોવ (Webhook વગર), ત્યારે આ ચાલુ રાખવાથી બોટ ટેલિગ્રામ મેસેજ અને ટેસ્ટ કોડને તરત જ રિસ્પોન્ડ કરશે.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsPollingActive(!isPollingActive)}
+                      className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                        isPollingActive
+                          ? "bg-rose-600 hover:bg-rose-700 text-white"
+                          : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30"
+                      }`}
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>{isPollingActive ? "પોલિંગ બંધ કરો" : "લાઈવ પોલિંગ શરૂ કરો"}</span>
+                    </button>
+                  </div>
+
+                  {pollLogs.length > 0 && (
+                    <div className="p-2.5 rounded-xl bg-slate-950 font-mono text-[11px] text-emerald-400 border border-slate-800 space-y-1">
+                      <div className="text-[10px] text-slate-500 font-sans font-bold">છેલ્લી બોટ પ્રવૃત્તિ (Recent Updates):</div>
+                      {pollLogs.map((log, idx) => (
+                        <div key={idx} className="truncate">✓ {log}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Commands and Instructions Card */}
+                <div className="p-4 rounded-3xl bg-gradient-to-br from-indigo-50/70 to-purple-50/70 border border-indigo-200/70 space-y-3 text-xs text-slate-700">
+                  <div className="font-bold text-indigo-950 flex items-center gap-1.5 text-sm">
+                    <Sparkles className="w-4 h-4 text-indigo-600" />
+                    <span>ટેલિગ્રામ ગ્રૂપ & એડમિન વપરાશ માર્ગદર્શિકા (How to Use)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                    <div className="p-3 rounded-2xl bg-white border border-indigo-100 space-y-1.5">
+                      <div className="font-bold text-indigo-900 flex items-center gap-1">
+                        <span>👥 ટેલિગ્રામ ગ્રૂપમાં મોક ટેસ્ટ શરૂ કરવા:</span>
+                      </div>
+                      <p>૧. બોટને તમારા ગ્રૂપમાં <strong>Admin</strong> તરીકે ઍડ કરો (Polls & Messages ની પરવાનગી આપો).</p>
+                      <p>૨. ગ્રૂપમાં સીધો જ ટેસ્ટ કોડ ટાઈપ કરો: <code className="bg-indigo-50 px-1 py-0.5 rounded text-indigo-700 font-bold">GSRTC-1001</code> અથવા <code className="bg-indigo-50 px-1 py-0.5 rounded text-indigo-700 font-bold">/quiz GSRTC-1001</code></p>
+                      <p>૩. બોટ તરત જ ઇન્ટરેક્ટિવ ક્વિઝ પોલ શરૂ કરશે અને અંતે <strong>સ્કોરબોર્ડ ટેબલ</strong> પરિણામ આપશે!</p>
+                      <p>૪. કોઈપણ ટેસ્ટનું અગાઉનું પરિણામ જોવા માટે: <code className="bg-indigo-50 px-1 py-0.5 rounded text-indigo-700 font-bold">/results &lt;CODE&gt;</code></p>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-white border border-indigo-100 space-y-1.5">
+                      <div className="font-bold text-purple-900 flex items-center gap-1">
+                        <span>👑 ટેલિગ્રામમાંથી એડમિન હેન્ડલિંગ & Mini App:</span>
+                      </div>
+                      <p>• <strong>/admin</strong> : એડમિન કંટ્રોલ પેનલ મેનુ ખોલો (માત્ર એડમિન ID માટે).</p>
+                      <p>• <strong>/dispatch</strong> : તાત્કાલિક ડેઇલી ટેસ્ટ ગ્રૂપમાં રવાના કરો.</p>
+                      <p>• <strong>/stats</strong> : સિસ્ટમના તમામ MCQs અને ટેસ્ટના આંકડા જુઓ.</p>
+                      <p>• <strong>/start</strong> અથવા <strong>/app</strong> : મોબાઇલ-ફ્રેન્ડલી Telegram Mini App ખોલો જેથી સામાન્ય યુઝર્સ પણ પોતાના પ્રશ્નો/ટેસ્ટ બનાવી શકે.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1276,7 +1862,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Modal: Add New Source Paper Google Drive Link */}
         {showAddSourceModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <div className="w-full max-w-md bg-white rounded-2xl p-5 shadow-2xl border border-slate-200 space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <h4 className="font-bold text-slate-900 text-sm">નવું ઓલ્ડ પેપર (Google Drive Link) ઉમેરો</h4>
@@ -1356,7 +1942,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Cloud Config Modal */}
         {showConfigModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <div className="w-full max-w-md bg-white rounded-2xl p-5 shadow-2xl border border-slate-200 space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">

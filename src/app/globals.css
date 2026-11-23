@@ -41,6 +41,38 @@ body {
   background: #94a3b8;
 }
 
+/* Hide scrollbars for horizontal chip/tab rows */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Shared entrance animation used across modals and cards */
+@keyframes mcqFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: mcqFadeIn 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn {
+    animation: none;
+  }
+}
+
 /* Hide spin buttons on number inputs */
 input[type=number]::-webkit-inner-spin-button, 
 input[type=number]::-webkit-outer-spin-button { 

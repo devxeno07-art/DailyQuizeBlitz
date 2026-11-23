@@ -29,16 +29,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Initialize from storage only after client mount to prevent SSR hydration mismatch
   useEffect(() => {
     setIsMounted(true);
+    let currentUser = null;
     try {
-      const savedUser = getCurrentUser();
-      if (savedUser) {
-        setUser(savedUser);
+      currentUser = getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
       }
     } catch (e) {
       console.warn("Auth initialization error", e);
     }
 
+    // Telegram Mini App (WebApp) auto-detection & auto-login
     if (typeof window !== "undefined") {
+      const tg = (window as any).Telegram?.WebApp;
+      if (tg) {
+        try {
+          tg.ready?.();
+          tg.expand?.();
+          tg.enableClosingConfirmation?.();
+
+          const tgUser = tg.initDataUnsafe?.user;
+          if (tgUser && !currentUser) {
+            const tgPhone = tgUser.id ? `tg_${tgUser.id}` : "tg_user";
+            const tgName =
+              [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") ||
+              tgUser.username ||
+              "Telegram Student";
+            loginOrRegister(tgPhone, tgName)
+              .then((loggedUser) => {
+                setUser(loggedUser);
+              })
+              .catch((e) => console.warn("Telegram auto-login failed:", e));
+          }
+        } catch (tgErr) {
+          console.warn("Telegram WebApp init warning:", tgErr);
+        }
+      }
+
       try {
         const channel = new BroadcastChannel("mcq_realtime_sync");
         const handleMsg = (e: MessageEvent) => {

@@ -27,7 +27,8 @@ import {
   Award,
   Layers,
   Bot,
-  Trophy
+  Trophy,
+  Clock
 } from "lucide-react";
 import { BulkImportModal } from "./BulkImportModal";
 
@@ -302,8 +303,27 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
               <span>{currentPaper.subject || currentPaper.category}</span>
+              <span>•</span>
+              <div className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200/80 px-2 py-0.5 rounded-lg border border-slate-200" title="કસ્ટમ સમય મર્યાદા (મિનિટ)">
+                <Clock className="w-3 h-3 text-brand-600" />
+                <span className="text-[10px] text-slate-500 font-medium">સમય:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={300}
+                  value={currentPaper.timeLimitMinutes || 60}
+                  onChange={(e) => {
+                    const mins = Math.max(1, Number(e.target.value));
+                    const updated = { ...currentPaper, timeLimitMinutes: mins };
+                    setCurrentPaper(updated);
+                    savePaper(updated);
+                  }}
+                  className="w-10 bg-white border border-slate-300 rounded px-1 py-0.5 text-center font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+                <span className="text-[10px] text-slate-600 font-bold">Min</span>
+              </div>
               <span>•</span>
               <span className="flex items-center gap-1 font-medium">
                 {saveStatus === "saving" ? (
@@ -380,7 +400,7 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
             <div>
               <div className="text-xs font-bold text-orange-950 flex items-center gap-1.5">
                 <span>ઓરિજિનલ PDF સોર્સ સાથે જોડાયેલ છે</span>
-                <span className="text-[10px] bg-orange-200/70 text-orange-800 px-1.5 py-0.2 rounded font-mono">
+                <span className="text-[10px] bg-orange-200/70 text-orange-800 px-1.5 py-0.5 rounded font-mono">
                   Drive Link
                 </span>
               </div>

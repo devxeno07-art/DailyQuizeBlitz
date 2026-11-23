@@ -1,83 +1,229 @@
-# 📱 MCQ Master - પ્રશ્નપત્ર અને MCQ નિર્માતા (Mobile-First Real-time App)
+# 📱 MCQ Master - પ્રશ્નપત્ર અને MCQ નિર્માતા
 
-એક આધુનિક, ઝડપી અને મોબાઈલ-ફ્રેન્ડલી વેબ એપ્લિકેશન જ્યાં યુઝર્સ સરળતાથી પોતાના MCQ પ્રશ્નપત્રો બનાવી શકે છે, પ્રશ્નો ટાઈપ કે બલ્ક પેસ્ટ કરી શકે છે, રિયલ-ટાઇમમાં સેવ કરી શકે છે અને મોક ટેસ્ટ આપી શકે છે.
-
----
-
-## ✨ મુખ્ય વિશેષતાઓ (Key Features)
-
-1. **📱 100% Mobile-First UI/UX:**
-   - મોબાઈલ સ્ક્રીન માટે ખાસ ડિઝાઇન કરેલ સ્મૂથ કાર્ડ્સ, ફ્લોટિંગ એક્શન બટન (FAB) અને આંગળીથી સરળતાથી દબાવી શકાય તેવા મોટા બટનો.
-   - ગુજરાતી અને અંગ્રેજી બંને ભાષાઓ માટે ઉત્તમ ફોન્ટ અને સપોર્ટ.
-
-2. **⚡ પાસવર્ડ વિના ઇન્સ્ટન્ટ લોગિન (Passwordless Login):**
-   - કોઈ પાસવર્ડ યાદ રાખવાની જરૂર નથી! માત્ર **મોબાઈલ નંબર (10 અંક)** અને **નામ** નાખીને તરત જ પ્રવેશ.
-   - જેવો યુઝર પોતાનો નંબર નાખશે, તરત જ તેના દ્વારા પહેલા બનાવેલા તમામ પેપર્સ ઓટોમેટિક લોડ થઈ જશે.
-
-3. **📁 પ્રોજેક્ટ / પેપર મેનેજમેન્ટ (Papers System):**
-   - નવું પેપર બનાવતી વખતે પેપરનું નામ (દા.ત. *GSRTC કંડક્ટર મોક ટેસ્ટ - 1*), વિષય, કેટેગરી અને લક્ષ્યાંક પ્રશ્નો પસંદ કરો.
-   - પ્રત્યેક પેપર માટે પ્રોગ્રેસ બાર (દા.ત. 25/50 પ્રશ્નો).
-
-4. **✍️ સ્માર્ટ MCQ એડિટર (Type & Paste):**
-   - **મેન્યુઅલ ટાઈપિંગ:** પ્રશ્ન, વિકલ્પ A, B, C, D, વૈકલ્પિક E (લાગુ પડતું નથી), અને સાચો જવાબ પસંદ કરવા માટે મોટા લીલા બટન.
-   - **📋 સ્માર્ટ બલ્ક પેસ્ટ (Smart Bulk Parser):** WhatsApp, Telegram, Word કે PDF માંથી 20, 50 કે 100 પ્રશ્નો એકસાથે કોપી-પેસ્ટ કરો! સિસ્ટમ આપોઆપ પ્રશ્નો, વિકલ્પો અને જવાબો ઓળખીને ૧-ક્લિકમાં પેપરમાં ઉમેરી દેશે.
-   - પ્રશ્નોને ઉપર-નીચે ખસેડવાની (Reorder), ડુપ્લિકેટ કરવાની અને એડિટ કરવાની સુવિધા.
-
-5. **🛡️ ઝીરો પ્રોગ્રેસ લોસ (Zero Data Loss Protection):**
-   - ડ્યુઅલ લેયર ઓટો-સેવિંગ: ટાઈપ કરતી વખતે દર એક અક્ષરે લોકલ ડ્રાફ્ટ કેશમાં સાચવાય છે.
-   - જો બ્રાઉઝર ભૂલથી બંધ થઈ જાય કે પેજ રીફ્રેશ થાય, તો પણ ડ્રાફ્ટ તરત જ રિકવર થઈ જાય છે.
-
-6. **👑 એડમિન પેનલ (Admin Control Center):**
-   - ડિફોલ્ટ સુરક્ષા PIN: `7777`
-   - કયા યુઝરે ક્યારે લોગિન કર્યું, કેટલા પેપર્સ અને કેટલા MCQs બનાવ્યા તેનું રિયલ-ટાઇમ લિસ્ટ.
-   - એડમિન કોઈપણ યુઝરના પેપર્સ અને પ્રશ્નો લાઈવ જોઈ શકે છે.
-
-7. **🎯 મોક ટેસ્ટ / એક્ઝામ સિમ્યુલેટર (Interactive Test):**
-   - બનાવેલા પેપર પર વિદ્યાર્થીઓ ટેસ્ટ આપી શકે છે (ટાઈમર સાથે).
-   - ઇન્સ્ટન્ટ સ્કોર કાર્ડ (સાચા/ખોટા જવાબો, ટકાવારી) અને વિગતવાર ઉત્તરાવલી (સમજૂતી સાથે).
-
-8. **📤 એક્સપોર્ટ અને પ્રિન્ટ (Print & Export):**
-   - **WhatsApp શેર:** સુવ્યવસ્થિત બોલ્ડ ફોર્મેટમાં પ્રશ્નો અને ઉત્તરાવલી ૧-ક્લિકમાં કોપી કે WhatsApp પર મોકલો.
-   - **A4 પ્રિન્ટ / PDF:** સત્તાવાર પરીક્ષા પેપર અને OMR/ઉત્તરાવલી સાથે પ્રિન્ટ-રેડી લેઆઉટ.
-   - **Excel (CSV) અને JSON:** બેકઅપ ડાઉનલોડ કરો.
+એક આધુનિક, ઝડપી અને મોબાઈલ-ફ્રેન્ડલી Next.js એપ્લિકેશન જ્યાં વિદ્યાર્થીઓ અને એડમિન સરળતાથી MCQ પ્રશ્નપત્રો બનાવી શકે, મોક ટેસ્ટ આપી શકે અને ટેલિગ્રામ ગ્રૂપમાં લાઈવ ક્વિઝ ચલાવી શકે.
 
 ---
 
-## 🚀 લોકલ રન કેવી રીતે કરવું (Run Locally)
+## ✨ મુખ્ય વિશેષતાઓ
+
+1. **📱 100% Mobile-First UI/UX** — મોબાઈલ માટે મોટા બટનો, સ્મૂથ કાર્ડ્સ, ટેબ્સ અને ગુજરાતી ફોન્ટ સપોર્ટ. PWA manifest + home-screen icons સાથે.
+2. **⚡ પાસવર્ડલેસ લોગિન** — મોબાઈલ નંબર (10 અંક) અને નામથી ઇન્સ્ટન્ટ પ્રવેશ. જૂનાં પેપર્સ આપોઆપ લોડ થાય.
+3. **📁 પેપર મેનેજમેન્ટ** — પેપર બનાવો, એડિટ કરો, ડુપ્લિકેટ કરો, ડિલીટ કરો અને પ્રોગ્રેસ (દા.ત. 25/50 પ્રશ્નો) જુઓ.
+4. **✍️ સ્માર્ટ MCQ એડિટર** — મેન્યુઅલ ટાઈપિંગ + WhatsApp/Telegram/PDF માંથી સ્માર્ટ બલ્ક પેસ્ટ. પ્રશ્નો reorder/duplicate/edit કરી શકાય.
+5. **📥 JSON ઈમ્પોર્ટ + GSRTC નમૂનો** — અગાઉ એક્સપોર્ટ કરેલી JSON ફાઈલ ઈમ્પોર્ટ કરો, અથવા એક ક્લિકમાં 25 પ્રશ્નોનો GSRTC નમૂનો લાઈબ્રેરીમાં ઉમેરો.
+6. **🛡️ ઝીરો ડેટા લોસ** — દર અક્ષરે લોકલ ડ્રાફ્ટ ઓટો-સેવ; બ્રાઉઝર બંધ થાય તો પણ ડ્રાફ્ટ રિકવર થાય.
+7. **👑 સર્વર-સાઇડ એડમિન પેનલ** — HttpOnly signed session cookie, યુઝર્સ/પેપર્સની લાઈવ યાદી, સર્વર સ્ટેટ્સ, બોટ સેટિંગ્સ, webhook નિયંત્રણ અને ડેઇલી ટેસ્ટ શેડ્યુલર.
+8. **🎯 મોક ટેસ્ટ સિમ્યુલેટર** — સ્થિર ટાઈમર (auto-submit), સ્કોર કાર્ડ, વિગતવાર ઉત્તરાવલી અને સાચા સહભાગીઓ આધારિત લીડરબોર્ડ.
+9. **🏆 રિયલ લીડરબોર્ડ** — બ્રાઉઝર + સર્વરના એટેમ્પ્ટ્સ મર્જ થાય; કોઈ નકલી peer data નહીં.
+10. **🤖 ટેલિગ્રામ લાઈવ ક્વિઝ બોટ** — ગ્રૂપમાં `/quiz CODE` થી Telegram native polls શરૂ થાય, `poll_answer` updates પરથી રિયલ સ્કોરિંગ થાય અને અંતે લીડરબોર્ડ મોકલાય.
+11. **📅 ડેઇલી ટેસ્ટ શેડ્યુલર** — દરેક દિવસ નિશ્ચિત સમયે (IST) સર્વર પરથી આપોઆપ ક્વિઝ બનીને ગ્રૂપમાં મોકલાય. એડમિન પેનલ ખુલ્લી હોવી જરૂરી નથી.
+12. **📤 એક્સપોર્ટ અને પ્રિન્ટ** — WhatsApp ફોર્મેટ, A4 પ્રિન્ટ/PDF, CSV અને JSON બેકઅપ.
+
+---
+
+## 🚀 લોકલ રન
 
 ```bash
-# 1. ડેવલપમેન્ટ સર્વર શરૂ કરો
+npm install
 npm run dev
 ```
 
 બ્રાઉઝરમાં ખોલો: `http://localhost:3000`
+એડમિન પેનલ: `http://localhost:3000/admin-portal`
+
+વૈકલ્પિક ચેક:
+
+```bash
+npm run typecheck
+npm run build
+```
 
 ---
 
-## ☁️ Vercel પર ફ્રી હોસ્ટિંગ (Deploy on Vercel Free)
+## ⚙️ Environment Variables
 
-1. આ પ્રોજેક્ટને તમારા GitHub રિપોઝીટરીમાં પુશ કરો:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit of MCQ Master"
-   git branch -M main
-   git remote add origin <your-github-repo-url>
-   git push -u origin main
-   ```
-2. **[vercel.com](https://vercel.com)** પર જાઓ અને તમારા GitHub એકાઉન્ટથી સાઇન ઇન કરો.
-3. **"Add New Project"** પર ક્લિક કરો અને તમારી રિપોઝીટરી સિલેક્ટ કરો.
-4. **Deploy** બટન પર ક્લિક કરો.
-5. Vercel આપોઆપ Next.js બિલ્ડ કરશે અને 1-2 મિનિટમાં તમને ફ્રી લાઈવ URL (દા.ત. `https://your-mcq-app.vercel.app`) મળી જશે!
+`.env.example` ની કોપી બનાવીને `.env.local` બનાવો. લોકલ મોડમાં ન્યૂનતમ કંઈપણ સેટ કરવાની જરૂર નથી, પરંતુ production માં નીચેનું ફરજિયાત છે.
+
+| Variable | વર્ણન |
+| --- | --- |
+| `NEXT_PUBLIC_APP_URL` | એપનું public HTTPS URL (Telegram Mini App + webhook માટે) |
+| `ADMIN_PIN` | એડમિન લોગિન PIN. Production માં **ચોક્કસ બદલો**. |
+| `ADMIN_SESSION_SECRET` | લાંબો random string — admin cookie sign કરવા માટે |
+| `ADMIN_API_TOKEN` | વૈકલ્પિક server-to-server admin bearer token |
+| `TELEGRAM_BOT_TOKEN` | @BotFather તરફથી મળેલો bot token (server-side જ) |
+| `TELEGRAM_BOT_USERNAME` | બોટનું username (`@` વગર) |
+| `TELEGRAM_ADMIN_ID` | એડમિનનો numeric Telegram ID |
+| `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook secret header માટે |
+| `TELEGRAM_POLL_SECRET` | `/api/telegram/poll` માટે daemon secret |
+| `TELEGRAM_POLL_DELAY_MS` | પ્રશ્નો વચ્ચેનો delay (default 400ms) |
+| `TELEGRAM_MAX_QUESTIONS` | એક ટેસ્ટમાં વધુમાં વધુ પ્રશ્નો. `0` = બધા પ્રશ્નો |
+| `CRON_SECRET` | `/api/cron/tick` માટે secret (Vercel Cron / external cron) |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash/Vercel KV REST (recommended on Vercel) |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Upstash ના વૈકલ્પિક variable names |
+| `NEXT_PUBLIC_FIREBASE_*` | વૈકલ્પિક browser-side Firebase sync |
+
+> ⚠️ `data/` ફોલ્ડરમાં runtime quiz, sessions, schedules અને bot config સેવ થાય છે. તે `.gitignore` માં છે — ક્યારેય commit કરશો નહીં. જો bot token કોઈને ખબર પડે તો @BotFather માં `/revoke` કરીને નવો token લો.
 
 ---
 
-## 🗄️ રિયલ-ટાઇમ ક્લાઉડ ડેટાબેઝ સેટઅપ (Firebase Firestore - 100% Free)
+## 🗄️ સ્ટોરેજ મોડ
 
-આ એપ્લિકેશન કોઈપણ સેટઅપ વગર પણ **લોકલ રિયલ-ટાઇમ મોડ** માં સીધી જ કામ કરે છે. પરંતુ જો તમારે અલગ-અલગ મોબાઈલ અને કમ્પ્યુટર વચ્ચે લાઈવ ડેટા સિન્ક કરવો હોય:
+| મોડ | ક્યારે વપરાય | ટીપ |
+| --- | --- | --- |
+| **Upstash / Vercel KV** | `KV_REST_API_URL` + token સેટ હોય | Vercel/serverless માટે ભલામણ કરેલ |
+| **Local JSON** | `data/` ફોલ્ડર writable હોય | લોકલ dev / VPS |
+| **Memory** | ફાઈલ લખી શકાય નહીં | ફક્ત ટેમ્પરરી fallback; server restart પર ડેટા જાય |
 
-1. [console.firebase.google.com](https://console.firebase.google.com) પર જાઓ.
-2. નવો પ્રોજેક્ટ બનાવો (સ્પાર્ક ફ્રી પ્લાન).
-3. **Build -> Firestore Database** માં જઈને Create Database કરો (Test Mode અથવા Production Rules).
-4. Project Settings માંથી Web App (`</>`) એડ કરી `firebaseConfig` કી મેળવો.
-5. Vercel ના Environment Variables માં અથવા એપ્લિકેશનની **Admin Panel -> Settings** માં સીધી જ કી પેસ્ટ કરી દો!
+Admin Panel → Settings માં Firebase config પણ સેટ કરી શકાય (વૈકલ્પિક browser sync).
+
+---
+
+## 🤖 ટેલિગ્રામ બોટ સેટઅપ
+
+### 1. બોટ બનાવો
+1. Telegram માં **@BotFather** ને `/newbot` મોકલો.
+2. નામ અને username આપો, token કોપી કરો.
+3. બોટને ગ્રૂપમાં ઉમેરો અને **admin** બનાવો (polls મોકલવા અને answers વાંચવા માટે).
+4. ગ્રૂપ ID મેળવો (દા.ત. `-100...`). Public ગ્રૂપ માટે `@group_username` પણ ચાલશે.
+
+### 2. એડમિન પેનલમાં સેટ કરો
+`/admin-portal` → **Bot Config** ટૅબ → Bot Token, Group ID, Admin Telegram ID, Web App URL ભરો → સેવ કરો.
+Token સર્વર પર જ રહે છે; browser માં ક્યારેય સેવ થતો નથી.
+
+### 3. Webhook અથવા Polling પસંદ કરો (બંને એકસાથે નહીં)
+
+**Webhook (production માટે ભલામણ):**
+```bash
+curl -X POST https://your-app.vercel.app/api/telegram/setup \
+  -H "Content-Type: application/json" \
+  -H "Cookie: mcq_admin_session=<session-cookie>" \
+  -d '{"action":"set"}'
+```
+અથવા એડમિન પેનલના **Webhook** વિભાગમાંથી «Webhook સેટ કરો» દબાવો. URL `https://<domain>/api/telegram/webhook` હશે.
+
+**Polling (લોકલ development):**
+```bash
+# .env.local માં TELEGRAM_POLL_SECRET સેટ કરો, પછી:
+npm run bot
+```
+Daemon દર 1 સેકન્ડે updates ખેંચે છે અને દર મિનિટે scheduler/finalization ચલાવે છે.
+
+### 4. ગ્રૂપમાં વપરાતા કમાન્ડ
+| કમાન્ડ | કામ |
+| --- | --- |
+| `/quiz GSRTC-1234` | સેવ થેલી ક્વિઝના Telegram polls શરૂ કરો |
+| `/results GSRTC-1234` | લાઈવ લીડરબોર્ડ |
+| `/stop GSRTC-1234` | ટેસ્ટ બંધ કરી અંતિમ લીડરબોર્ડ મોકલો |
+| `/stats` | એડમિન માટે સર્વર આંકડા |
+
+---
+
+## 📅 ડેઇલી ટેસ્ટ શેડ્યુલર
+
+એડમિન પેનલ → **Scheduler** ટૅબમાંથી શેડ્યુલ બનાવો (સમય IST માં). શેડ્યુલ સર્વર પર સેવ થાય છે.
+
+Scheduler ને ચલાવવા માટે `/api/cron/tick` ને નિયમિત call કરો:
+
+```bash
+curl "https://your-app.vercel.app/api/cron/tick?secret=$CRON_SECRET"
+```
+
+વિકલ્પો:
+- **Vercel Cron** — `vercel.json` માં daily safety-net ટિક છે. Vercel Hobby પ્લાનમાં વારંવારના cron મર્યાદિત હોય છે; minute-level માટે Pro અથવા external cron વાપરો.
+- **External cron** — [cron-job.org](https://cron-job.org) કે UptimeRobot થી દર 5 મિનિટે ઉપરની URL ping કરો (recommended).
+- **Local daemon** — `npm run bot` (daemon દર મિનિટે tick કરે છે).
+
+Tick finalizeDueSessions() પણ ચલાવે છે, જેથી ટેસ્ટનો સમય પૂરો થતાં જ લીડરબોર્ડ Telegram માં જાય.
+
+---
+
+## 📥 JSON ઈમ્પોર્ટ ફોર્મેટ
+
+Paper List માં «JSON ઈમ્પોર્ટ» થી single object અથવા array ઈમ્પોર્ટ કરી શકાય:
+
+```json
+{
+  "title": "GSRTC મોક ટેસ્ટ",
+  "subject": "મોટર વ્હીકલ એક્ટ",
+  "category": "GSRTC",
+  "timeLimitMinutes": 60,
+  "questions": [
+    {
+      "questionText": "GSRTC નું પૂરું નામ શું છે?",
+      "options": ["Gujarat State Road Transport Corporation", "બીજો વિકલ્પ", "ત્રીજો વિકલ્પ", "ચોથો વિકલ્પ"],
+      "correctAnswer": 0,
+      "explanation": "GSRTC = Gujarat State Road Transport Corporation"
+    }
+  ]
+}
+```
+
+`correctAnswer` એ 0-based index છે (0 = પહેલો વિકલ્પ). ખાલી પ્રશ્નો/વિકલ્પો આપોઆપ skip થાય છે.
+
+---
+
+## ☁️ Vercel પર ડિપ્લોય
+
+1. રિપો કરો GitHub પર push કરો.
+2. [vercel.com](https://vercel.com) → **Add New Project** → રિપો select કરો.
+3. Environment Variables માં ઓછામાં ઓછું આ સેટ કરો:
+   - `ADMIN_PIN`, `ADMIN_SESSION_SECRET`, `CRON_SECRET`
+   - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_POLL_SECRET`
+   - `KV_REST_API_URL`, `KV_REST_API_TOKEN`
+   - `NEXT_PUBLIC_APP_URL=https://<your-domain>`
+4. Deploy કરો.
+5. પ્રથમ વાર એડમિન પેનલમાં લોગિન કરીને Bot Config સેવ કરો.
+6. Webhook સેટ કરો (એડમિન પેનલ અથવા `/api/telegram/setup`).
+7. External cron દ્વારા `/api/cron/tick?secret=...` દર 5 મિનિટે call કરો.
+
+> Vercel ના serverless filesystem પર `data/` ટકતું નથી — KV સેટ ન કરો તો restart પર ડેટા ગુમાવાશે.
+
+---
+
+## 🔐 સુરક્ષા નોંધ
+
+- Admin PIN સર્વર પર verify થાય છે અને 8 કલાક માટે HMAC-signed HttpOnly cookie બને છે.
+- Bot token/webhook secret browser ને પરત મળતા નથી; UI ફક્ત «configured» સ્થિતિ બતાવે છે.
+- Telegram webhook `X-Telegram-Bot-Api-Secret-Token` verify કરે છે; secret કન્ફિગર ન હોય તો production માં POST requests reject થાય છે. Duplicate updates ignore થાય છે (poll answers સિવાય).
+- `/api/telegram/poll` અને `/api/cron/tick` માટે secret ફરજિયાત છે (local dev સિવાય).
+- Test attempts API PII (phone) public response માંથી કાઢી નાખે છે.
+- `.env`, `.env.local` અને `data/` commit ન થાય તેની ખાતરી રાખો. લીક થયેલો bot token @BotFather થી revoke કરો.
+
+---
+
+## 🧩 પ્રોજેક્ટ સ્ટ્રક્ચર
+
+```
+src/
+  app/
+    api/
+      admin/          # login, logout, session, stats
+      attempts/       # public leaderboard attempts
+      cron/tick/      # scheduler + finalization tick
+      scheduler/      # CRUD + manual dispatch
+      telegram/       # webhook, poll, config, setup, quiz
+    admin-portal/     # hidden admin page
+  components/         # UI (AdminPanel, ExamModal, PaperList, ...)
+  lib/
+    adminAuth.ts      # HMAC session cookie
+    kvStore.ts        # Upstash / local JSON / memory
+    serverStorage.ts  # server data access
+    scheduler.ts      # IST schedule runner
+    telegramBotEngine.ts # bot, polls, scoring, leaderboards
+  data/samplePaper.ts # 25-question GSRTC sample paper
+scripts/
+  telegram_daemon.js  # polling + cron daemon
+data/                 # local runtime data (gitignored)
+```
+
+---
+
+## 📜 Scripts
+
+| Command | કામ |
+| --- | --- |
+| `npm run dev` | Next.js dev server |
+| `npm run build` | Production build |
+| `npm start` | Production server |
+| `npm run typecheck` | TypeScript check |
+| `npm run bot` | Telegram polling + scheduler daemon |

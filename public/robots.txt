@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin-portal
+Disallow: /api/
+Disallow: /_next/
+
+# No sitemap is published because the production domain is deployment-specific.

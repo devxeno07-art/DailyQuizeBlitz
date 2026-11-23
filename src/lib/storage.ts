@@ -95,33 +95,67 @@ if (typeof window !== "undefined" && "BroadcastChannel" in window) {
   }
 }
 
-// Telegram Bot Config
+// Telegram Bot Config (tokens are never persisted in the browser)
 export const getTelegramBotConfig = (): TelegramBotConfig => {
-  if (typeof window === "undefined") {
-    return {
-      botToken: process.env.TELEGRAM_BOT_TOKEN || "",
-      botUsername: process.env.TELEGRAM_BOT_USERNAME || "GsrtcMockQuizBot",
-      defaultTimePerQuestion: 30,
-      targetGroupId: "",
-    };
-  }
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_TELEGRAM_BOT_CONFIG);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-
-  return {
-    botToken: process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN || "",
-    botUsername: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || "GsrtcMockQuizBot",
+  const safeDefaults: TelegramBotConfig = {
+    botToken: "",
+    botUsername: "GsrtcMockQuizBot",
     defaultTimePerQuestion: 30,
     targetGroupId: "",
+    adminTelegramId: "",
+    webAppUrl: "",
+    webhookUrl: "",
+    webhookSecret: "",
+    pollDelayMs: 400,
   };
+
+  if (typeof window === "undefined") {
+    return {
+      ...safeDefaults,
+      botUsername:
+        process.env.TELEGRAM_BOT_USERNAME ||
+        process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ||
+        safeDefaults.botUsername,
+    };
+  }
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TELEGRAM_BOT_CONFIG);
+    if (raw) {
+      const parsed = JSON.parse(raw) as TelegramBotConfig;
+      const sanitized: TelegramBotConfig = {
+        ...safeDefaults,
+        ...parsed,
+        botToken: "",
+        webhookSecret: "",
+      };
+      // Clean up any token stored by an older version of the app.
+      localStorage.setItem(
+        STORAGE_KEY_TELEGRAM_BOT_CONFIG,
+        JSON.stringify(sanitized)
+      );
+      return sanitized;
+    }
+  } catch (e) {}
+
+  return safeDefaults;
 };
 
 export const setTelegramBotConfig = (cfg: TelegramBotConfig): void => {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY_TELEGRAM_BOT_CONFIG, JSON.stringify(cfg));
+    // Keep only non-secret settings locally; the server owns the token.
+    const { botToken, webhookSecret, ...publicFields } = cfg;
+    localStorage.setItem(
+      STORAGE_KEY_TELEGRAM_BOT_CONFIG,
+      JSON.stringify({ ...publicFields, botToken: "", webhookSecret: "" })
+    );
+    // Sync to server storage so server webhook & polling always have active credentials
+    fetch("/api/telegram/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cfg),
+    }).catch(() => {});
   } catch (e) {}
 };
 
@@ -153,6 +187,24 @@ export const saveTelegramQuiz = async (quiz: TelegramQuiz): Promise<void> => {
     current.unshift(quiz);
   }
   setLocalTelegramQuizzes(current);
+
+  // Sync with server storage so server-side webhook/poll can read this quiz
+  // immediately. Await it so a /quiz command sent right after code generation
+  // always finds the quiz.
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/telegram/save-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(quiz),
+      });
+      if (!res.ok) {
+        console.warn("Could not sync quiz to server", res.status);
+      }
+    } catch (e) {
+      console.warn("Could not sync quiz to server", e);
+    }
+  }
 
   const { db } = initFirebase();
   if (db) {
@@ -673,6 +725,23 @@ export const setLocalScheduledTests = (tests: ScheduledDailyTest[]): void => {
 };
 
 export const saveScheduledDailyTest = async (test: ScheduledDailyTest): Promise<void> => {
+  // Server is the source of truth so the cron daemon can run schedules even
+  // when no admin browser is open.
+  if (typeof window !== "undefined") {
+    const res = await fetch("/api/scheduler", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(test),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "શેડ્યુલ સર્વર પર સેવ થઈ શક્યું નહીં.");
+    }
+    if (data.schedule?.id) {
+      test = { ...test, ...data.schedule };
+    }
+  }
+
   const current = getLocalScheduledTests();
   const idx = current.findIndex(t => t.id === test.id);
   if (idx >= 0) {
@@ -693,6 +762,16 @@ export const saveScheduledDailyTest = async (test: ScheduledDailyTest): Promise<
 };
 
 export const deleteScheduledDailyTest = async (testId: string): Promise<void> => {
+  if (typeof window !== "undefined") {
+    const res = await fetch(`/api/scheduler?id=${encodeURIComponent(testId)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "શેડ્યુલ ડિલીટ થઈ શક્યું નહીં.");
+    }
+  }
+
   const current = getLocalScheduledTests().filter(t => t.id !== testId);
   setLocalScheduledTests(current);
 
@@ -706,132 +785,110 @@ export const deleteScheduledDailyTest = async (testId: string): Promise<void> =>
   }
 };
 
+/** Pull the server-side schedules (admin only). */
+export const fetchServerScheduledTests = async (): Promise<ScheduledDailyTest[]> => {
+  const res = await fetch("/api/scheduler", { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => ({}));
+  const schedules: ScheduledDailyTest[] = Array.isArray(data.schedules)
+    ? data.schedules
+    : [];
+  if (schedules.length > 0) {
+    setLocalScheduledTests(schedules);
+  }
+  return schedules;
+};
+
 /**
- * Intelligent Test Dispatcher:
- * Generates a mock test based on schedule:
- * 1) Mode 'all_mixed': pools all digitized questions across all papers in the system
- * 2) Mode 'subject_wise': pools questions matching selected subject
- * Dispatches test code, registers Telegram Quiz, and sends announcement to Telegram group.
+ * Intelligent Test Dispatcher (server-side):
+ * The API builds a fresh mixed/subject-wise quiz from all server quizzes,
+ * saves it under a unique code, and launches the Telegram poll run.
  */
 export const dispatchScheduledDailyTest = async (scheduleId: string): Promise<TelegramQuiz | null> => {
-  const schedules = getLocalScheduledTests();
-  const schedule = schedules.find(s => s.id === scheduleId);
-  if (!schedule) return null;
+  const res = await fetch("/api/scheduler/dispatch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: scheduleId }),
+  });
+  const data = await res.json().catch(() => ({}));
 
-  const allPapers = getLocalPapers();
-  let candidateQuestions: Question[] = [];
+  if (!res.ok || !data.ok) {
+    throw new Error(data.error || "ટેસ્ટ મોકલવામાં ક્ષતિ થઈ.");
+  }
 
-  if (schedule.mode === "subject_wise" && schedule.subject) {
-    const targetSubj = schedule.subject.toLowerCase().trim();
-    const matchingPapers = allPapers.filter(p => 
-      p.subject?.toLowerCase().includes(targetSubj) ||
-      p.category?.toLowerCase().includes(targetSubj)
-    );
-    matchingPapers.forEach(p => {
-      if (p.questions && p.questions.length > 0) {
-        candidateQuestions.push(...p.questions);
-      }
+  await fetchServerScheduledTests().catch(() => {});
+
+  const code = String(data.code || "");
+  if (!code) return null;
+
+  // Fetch the generated quiz so the admin panel can show its details.
+  try {
+    const quizRes = await fetch(`/api/telegram/quiz/${encodeURIComponent(code)}`, {
+      cache: "no-store",
     });
-
-    // Fallback if subject has few questions: include questions from all papers
-    if (candidateQuestions.length === 0) {
-      allPapers.forEach(p => {
-        if (p.questions && p.questions.length > 0) {
-          candidateQuestions.push(...p.questions);
-        }
-      });
+    if (quizRes.ok) {
+      const quizData = await quizRes.json();
+      if (quizData.quiz) return quizData.quiz as TelegramQuiz;
     }
-  } else {
-    allPapers.forEach(p => {
-      if (p.questions && p.questions.length > 0) {
-        candidateQuestions.push(...p.questions);
-      }
-    });
+  } catch (e) {
+    console.warn("Could not fetch dispatched quiz", e);
   }
 
-  if (candidateQuestions.length === 0) {
-    return null;
-  }
-
-  // Deduplicate questions by text
-  const seenTexts = new Set<string>();
-  const uniqueCandidates: Question[] = [];
-  for (const q of candidateQuestions) {
-    const t = q.questionText.trim();
-    if (!seenTexts.has(t)) {
-      seenTexts.add(t);
-      uniqueCandidates.push(q);
-    }
-  }
-
-  // Shuffle randomly
-  const shuffled = [...uniqueCandidates].sort(() => 0.5 - Math.random());
-  const selectedQuestions = shuffled.slice(0, Math.min(schedule.questionCount || 20, shuffled.length));
-
-  // Re-number questions 1..N
-  const finalQuestions = selectedQuestions.map((q, idx) => ({
-    ...q,
-    questionNumber: idx + 1,
-  }));
-
-  const prefix = schedule.mode === "subject_wise" ? "SUBJ" : "DAILY";
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  const code = `${prefix}-${randomNum}`;
-  const now = new Date().toISOString();
-
-  const quizTitle = schedule.title || (schedule.mode === "subject_wise" ? `${schedule.subject} મોક ટેસ્ટ` : "ડેઇલી મેગા મોક ટેસ્ટ");
-  const subjectLabel = schedule.subject || "ડેઇલી મિક્સ ઓલ વિષય";
-
-  const quiz: TelegramQuiz = {
+  return {
     code,
-    paperId: `sched_${schedule.id}`,
-    title: quizTitle,
-    subject: subjectLabel,
-    timePerQuestion: schedule.timePerQuestion || 30,
-    questions: finalQuestions,
+    paperId: `sched_${scheduleId}`,
+    title: "ડેઇલી મોક ટેસ્ટ",
+    subject: "",
+    timePerQuestion: 30,
+    questions: [],
     createdBy: "Admin Scheduler",
-    creatorPhone: "Admin",
-    createdAt: now,
+    creatorPhone: "server",
+    createdAt: new Date().toISOString(),
   };
+};
 
-  await saveTelegramQuiz(quiz);
+// ==========================================
+// Server test attempts (real leaderboard)
+// ==========================================
 
-  // Update schedule status
-  schedule.lastRunAt = now;
-  schedule.lastGeneratedCode = code;
-  await saveScheduledDailyTest(schedule);
+export interface PublicTestAttempt {
+  id: string;
+  testCode: string;
+  paperId: string;
+  paperTitle: string;
+  subject: string;
+  studentName: string;
+  score: number;
+  totalQuestions: number;
+  wrongCount: number;
+  percentage: number;
+  grade: string;
+  completedAt: string;
+}
 
-  // Send announcement to Telegram if bot configured
-  const botConfig = getTelegramBotConfig();
-  const targetGroup = schedule.targetGroupId || botConfig.targetGroupId;
-
-  if (botConfig.botToken && targetGroup) {
-    try {
-      const announcement = 
-        `🏆 <b>${quizTitle} લાઈવ થઈ ગઈ છે!</b>\n\n` +
-        `📚 <b>વિષય:</b> ${subjectLabel}\n` +
-        `📊 <b>કુલ પ્રશ્નો:</b> ${finalQuestions.length} MCQs\n` +
-        `⏱ <b>સમય:</b> ${quiz.timePerQuestion} સે./પ્રશ્ન\n` +
-        `🔑 <b>ટેસ્ટ કોડ:</b> <code>${code}</code>\n\n` +
-        `👉 ગ્રૂપમાં મોક ટેસ્ટ શરૂ કરવા માટે આદેશ આપો:\n` +
-        `<code>/quiz ${code}</code>\n\n` +
-        `🎯 <i>તમામ વિદ્યાર્થી મિત્રો ઝડપથી ટેસ્ટ આપવા તૈયાર થઈ જાવ!</i>`;
-
-      await fetch(`https://api.telegram.org/bot${botConfig.botToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: targetGroup,
-          text: announcement,
-          parse_mode: "HTML",
-        }),
-      });
-    } catch (err) {
-      console.warn("Could not dispatch telegram message directly:", err);
+export const fetchServerTestAttempts = async (
+  testCodeOrPaperId?: string
+): Promise<PublicTestAttempt[]> => {
+  if (typeof window === "undefined") return [];
+  try {
+    const params = new URLSearchParams();
+    if (testCodeOrPaperId) {
+      if (/^[A-Za-z]+-\d+$/.test(testCodeOrPaperId.trim())) {
+        params.set("code", testCodeOrPaperId.trim());
+      } else {
+        params.set("paperId", testCodeOrPaperId.trim());
+      }
     }
+    const qs = params.toString();
+    const res = await fetch(`/api/attempts${qs ? `?${qs}` : ""}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    return Array.isArray(data.attempts) ? data.attempts : [];
+  } catch (e) {
+    return [];
   }
-
-  return quiz;
 };
 
 // ==========================================
@@ -858,9 +915,17 @@ export const saveTestAttempt = async (attempt: TestAttemptResult): Promise<void>
   current.unshift(attempt);
   if (typeof window !== "undefined") {
     try {
-      localStorage.setItem(STORAGE_KEY_TEST_ATTEMPTS, JSON.stringify(current.slice(0, 100)));
+      localStorage.setItem(STORAGE_KEY_TEST_ATTEMPTS, JSON.stringify(current.slice(0, 200)));
       broadcastChannel?.postMessage({ type: "TEST_ATTEMPTS_UPDATED" });
     } catch (e) {}
+
+    // Sync to the server so the Telegram/web leaderboard reflects every
+    // student, not just the current browser.
+    fetch("/api/attempts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(attempt),
+    }).catch(() => {});
   }
 
   const { db } = initFirebase();

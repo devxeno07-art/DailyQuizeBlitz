@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Paper } from "@/types";
 import { LeaderboardCard, LeaderboardEntry } from "./LeaderboardCard";
-import { getLocalTestAttempts } from "@/lib/storage";
+import {
+  getLocalTestAttempts,
+  fetchServerTestAttempts,
+  PublicTestAttempt,
+} from "@/lib/storage";
 import { useAuth } from "@/context/AuthContext";
 import { X, Trophy, Bot, Copy, Check, PlayCircle, ExternalLink } from "lucide-react";
 
@@ -22,6 +26,22 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 }) => {
   const { user } = useAuth();
   const [copiedCode, setCopiedCode] = useState(false);
+  const [serverAttempts, setServerAttempts] = useState<PublicTestAttempt[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !paper) return;
+    let active = true;
+    setLoadingAttempts(true);
+    fetchServerTestAttempts(paper.testCode || paper.id).then((list) => {
+      if (!active) return;
+      setServerAttempts(list);
+      setLoadingAttempts(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, paper]);
 
   if (!isOpen || !paper) return null;
 
@@ -36,54 +56,51 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     return "E";
   };
 
-  // Fetch real student attempts if any, plus realistic benchmark peers from user screenshot
-  const attempts = getLocalTestAttempts(paper.testCode || paper.id);
-
-  const defaultPeers = [
-    { name: "Sizuu 💗 Rtw", scoreRatio: 0.267, wrong: 25 },
-    { name: "Jãy ...", scoreRatio: 0.200, wrong: 30 },
-    { name: "આદિવાસી રાઠવા 🌿🏹", scoreRatio: 0.183, wrong: 23 },
-    { name: "Dolly Rtw 💙", scoreRatio: 0.167, wrong: 22 },
-    { name: "Geeta", scoreRatio: 0.100, wrong: 2 },
-    { name: "Azuuu 1026", scoreRatio: 0.017, wrong: 2 },
-    { name: "D∑V⨂∑NO ⚡", scoreRatio: 0.017, wrong: 4 },
-  ];
-
-  const realEntries: LeaderboardEntry[] = attempts.map((att) => ({
-    rank: 1,
-    name: att.studentName,
-    score: att.score,
-    total: att.totalQuestions || totalQuestions,
-    wrong: att.wrongCount,
-    percentage: att.percentage,
-    grade: att.grade,
-    isCurrentUser: user?.phoneNumber === att.studentPhone,
-  }));
-
-  // Add benchmark peers if list has fewer than 7 entries
-  const currentNames = new Set(realEntries.map((e) => e.name));
-  defaultPeers.forEach((p) => {
-    if (!currentNames.has(p.name)) {
-      const pScore = Math.max(1, Math.round(totalQuestions * p.scoreRatio));
-      const pPct = totalQuestions > 0 ? (pScore / totalQuestions) * 100 : 0;
-      realEntries.push({
-        rank: 1,
-        name: p.name,
-        score: pScore,
-        total: totalQuestions,
-        wrong: p.wrong,
-        percentage: pPct,
-        grade: calculateGrade(pPct),
-        isCurrentUser: false,
-      });
+  // Merge server-synced attempts with local attempts (local wins so the
+  // student's own phone number is available for the "You" highlight).
+  const merged = new Map<
+    string,
+    {
+      id: string;
+      studentName: string;
+      studentPhone?: string;
+      score: number;
+      totalQuestions: number;
+      wrongCount: number;
+      percentage: number;
+      grade: string;
     }
+  >();
+  serverAttempts.forEach((attempt) => merged.set(attempt.id, attempt));
+  getLocalTestAttempts(paper.testCode || paper.id).forEach((attempt) => {
+    merged.set(attempt.id, attempt);
   });
 
+  const rawEntries: LeaderboardEntry[] = Array.from(merged.values()).map(
+    (attempt) => ({
+      rank: 0,
+      name: attempt.studentName || "વિદ્યાર્થી",
+      score: attempt.score,
+      total: attempt.totalQuestions || totalQuestions,
+      wrong: attempt.wrongCount,
+      percentage: attempt.percentage,
+      grade: attempt.grade || calculateGrade(attempt.percentage),
+      isCurrentUser: Boolean(
+        user?.phoneNumber &&
+          attempt.studentPhone &&
+          attempt.studentPhone === user.phoneNumber
+      ),
+    })
+  );
+
   // Sort descending by score, then ascending by wrong count
-  realEntries.sort((a, b) => b.score - a.score || a.wrong - b.wrong);
+  rawEntries.sort(
+    (a, b) =>
+      b.score - a.score || a.wrong - b.wrong || b.percentage - a.percentage
+  );
 
   // Assign ranks
-  const entries: LeaderboardEntry[] = realEntries.slice(0, 10).map((e, idx) => ({
+  const entries: LeaderboardEntry[] = rawEntries.slice(0, 20).map((e, idx) => ({
     ...e,
     rank: idx + 1,
   }));
@@ -133,6 +150,11 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
+          {loadingAttempts && (
+            <p className="text-center text-[11px] text-slate-400">
+              પરિણામો લોડ થઈ રહ્યાં છે...
+            </p>
+          )}
           <LeaderboardCard
             testTitle={paper.title}
             subject={paper.subject || paper.title}

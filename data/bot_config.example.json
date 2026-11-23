@@ -1,0 +1,11 @@
+{
+  "botToken": "1234567890:REPLACE_WITH_BOTFATHER_TOKEN",
+  "botUsername": "GsrtcMockQuizBot",
+  "adminTelegramId": "123456789",
+  "webAppUrl": "https://your-app.vercel.app",
+  "defaultTimePerQuestion": 30,
+  "targetGroupId": "-1001234567890",
+  "webhookUrl": "https://your-app.vercel.app/api/telegram/webhook",
+  "webhookSecret": "replace-with-a-long-random-string",
+  "pollDelayMs": 400
+}

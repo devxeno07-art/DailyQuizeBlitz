@@ -1,0 +1,40 @@
+{
+  "name": "MCQ Master - GSRTC પ્રશ્નપત્ર નિર્માતા",
+  "short_name": "MCQ Master",
+  "description": "GSRTC મોક ટેસ્ટ, MCQ પ્રશ્નપત્ર નિર્માતા અને ટેલિગ્રામ ક્વિઝ એપ.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "lang": "gu",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "મોક ટેસ્ટ આપો",
+      "short_name": "ટેસ્ટ",
+      "url": "/",
+      "description": "ઉપલબ્ધ મોક ટેસ્ટ ખોલો"
+    }
+  ]
+}

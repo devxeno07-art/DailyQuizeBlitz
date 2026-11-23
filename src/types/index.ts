@@ -70,9 +70,13 @@ export interface TelegramQuiz {
 export interface TelegramBotConfig {
   botToken: string;
   botUsername: string; // without @, e.g. "GsrtcMockQuizBot"
+  adminTelegramId?: string; // Numeric ID (e.g. "123456789") or @username of the admin to manage bot directly from Telegram
+  webAppUrl?: string; // Custom HTTPS Mini App URL (e.g. https://your-app.vercel.app)
   defaultTimePerQuestion?: number; // e.g. 30
   targetGroupId?: string; // e.g. "@gsrtc_discussion" or chat ID "-100xxxx"
   webhookUrl?: string;
+  webhookSecret?: string; // Telegram X-Telegram-Bot-Api-Secret-Token
+  pollDelayMs?: number; // delay between consecutive poll messages
 }
 
 export interface ScheduledDailyTest {
@@ -82,10 +86,11 @@ export interface ScheduledDailyTest {
   subject?: string;
   questionCount: number;
   timePerQuestion: number;
-  scheduledTime: string; // e.g. "21:00"
+  scheduledTime: string; // e.g. "21:00" (Asia/Kolkata)
   isActive: boolean;
   targetGroupId?: string;
   lastRunAt?: string;
+  lastRunDay?: string; // YYYY-MM-DD in Asia/Kolkata, prevents duplicate runs
   lastGeneratedCode?: string;
   createdAt: string;
 }
@@ -120,4 +125,68 @@ export interface SyncStatus {
   isCloudConnected: boolean;
   isSaving: boolean;
   lastSavedAt: Date | null;
+}
+
+// ==========================================
+// Telegram live quiz sessions (real results)
+// ==========================================
+
+export interface TelegramPollRecord {
+  pollId: string;
+  questionIndex: number;
+  questionId?: string;
+  correctOptionId: number;
+  chatId: number;
+  messageId?: number;
+  sentAt: string;
+}
+
+export interface TelegramParticipantAnswer {
+  optionId: number; // -1 when the answer was retracted
+  answeredAt: string;
+}
+
+export interface TelegramParticipant {
+  userId: string;
+  name: string;
+  username?: string;
+  answers: Record<string, TelegramParticipantAnswer>; // pollId -> answer
+  score: number;
+  wrong: number;
+  answeredCount: number;
+  joinedAt: string;
+  lastAnsweredAt: string;
+}
+
+export interface TelegramQuizSession {
+  id: string; // `${code}@${chatId}`
+  code: string;
+  chatId: number;
+  chatTitle?: string;
+  quiz: TelegramQuiz; // snapshot of the quiz at launch time
+  status: "active" | "completed" | "stopped" | "error";
+  startedAt: string;
+  startedBy: {
+    id: string;
+    name: string;
+    username?: string;
+  };
+  polls: TelegramPollRecord[];
+  participants: Record<string, TelegramParticipant>;
+  finalizeAt?: string;
+  leaderboardSentAt?: string;
+  error?: string;
+}
+
+export interface ServerOverviewStats {
+  quizzes: number;
+  totalQuizQuestions: number;
+  sessions: number;
+  activeSessions: number;
+  participants: number;
+  attempts: number;
+  averagePercentage: number;
+  schedules: number;
+  storageMode: "redis" | "file" | "memory";
+  webhookConfigured: boolean;
 }

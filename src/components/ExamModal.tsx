@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Paper, TestAttemptResult } from "@/types";
-import { saveTestAttempt } from "@/lib/storage";
+import {
+  saveTestAttempt,
+  fetchServerTestAttempts,
+  PublicTestAttempt,
+  getLocalTestAttempts,
+} from "@/lib/storage";
 import { useAuth } from "@/context/AuthContext";
 import confetti from "canvas-confetti";
 import { 
@@ -38,35 +43,73 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [copiedHeaderCode, setCopiedHeaderCode] = useState(false);
+  const [showTimerPopover, setShowTimerPopover] = useState(false);
+  const [customAddMinutes, setCustomAddMinutes] = useState<number>(10);
+  const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null);
+  const [serverAttempts, setServerAttempts] = useState<PublicTestAttempt[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
+
+  const submittedRef = useRef(false);
+  const timerArmedRef = useRef(false);
+  const submitRef = useRef<() => void>(() => {});
 
   const questions = paper?.questions || [];
   const totalQuestions = questions.length;
 
   useEffect(() => {
     if (isOpen && paper) {
+      submittedRef.current = false;
+      timerArmedRef.current = false;
       setCurrentIndex(0);
       setSelectedAnswers({});
       setIsSubmitted(false);
-      setTimeLeft((paper.timeLimitMinutes || 60) * 60);
+      setCurrentAttemptId(null);
+      setServerAttempts([]);
+      setTimeLeft(Math.max(60, (paper.timeLimitMinutes || 60) * 60));
+    } else {
+      submittedRef.current = false;
+      timerArmedRef.current = false;
     }
   }, [isOpen, paper]);
 
+  // Countdown runs independently of the current answer selection, so a
+  // re-render never restarts the interval or loses time.
   useEffect(() => {
-    if (!isOpen || isSubmitted || timeLeft <= 0) return;
-
+    if (!isOpen || isSubmitted) return;
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSubmitTest();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeLeft((prev) => Math.max(0, prev - 1));
     }, 1000);
-
     return () => clearInterval(timer);
+  }, [isOpen, isSubmitted]);
+
+  useEffect(() => {
+    if (isOpen && !isSubmitted && timeLeft > 0) {
+      timerArmedRef.current = true;
+    }
   }, [isOpen, isSubmitted, timeLeft]);
+
+  // Auto-submit once when the countdown genuinely reaches zero.
+  useEffect(() => {
+    if (!isOpen || isSubmitted || timeLeft > 0) return;
+    if (!timerArmedRef.current) return;
+    timerArmedRef.current = false;
+    submitRef.current();
+  }, [isOpen, isSubmitted, timeLeft]);
+
+  // Load real peer attempts from the server for the result leaderboard.
+  useEffect(() => {
+    if (!isOpen || !isSubmitted || !paper) return;
+    let active = true;
+    setLoadingAttempts(true);
+    fetchServerTestAttempts(paper.testCode || paper.id).then((list) => {
+      if (!active) return;
+      setServerAttempts(list);
+      setLoadingAttempts(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, isSubmitted, paper]);
 
   if (!isOpen || !paper) return null;
 
@@ -88,6 +131,8 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
   };
 
   const handleSubmitTest = () => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     setIsSubmitted(true);
 
     let correct = 0;
@@ -119,6 +164,7 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
       grade: grade,
       completedAt: new Date().toISOString(),
     };
+    setCurrentAttemptId(attempt.id);
     saveTestAttempt(attempt);
 
     if (percentage >= 40) {
@@ -131,6 +177,9 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
       } catch (e) {}
     }
   };
+
+  // Keep the timer's auto-submit callback pointed at the latest answers.
+  submitRef.current = handleSubmitTest;
 
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -165,55 +214,70 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
     return "E";
   };
 
-  // Build Leaderboard Entries matching user's requested table format
+  // Build leaderboard entries from real attempts (local + server sync).
   const buildLeaderboardEntries = (): LeaderboardEntry[] => {
-    const userName = user?.name || "તમે (You)";
-    const userGrade = calculateGrade(scorePercent);
-
-    // Realistic competitors for group scoreboard context
-    const peers = [
-      { name: "Sizuu 💖 Rtw", scoreRatio: 0.72, wrongFactor: 0.2 },
-      { name: "Jãy ...", scoreRatio: 0.65, wrongFactor: 0.25 },
-      { name: "આદિવાસી રાઠવા 🌿🏹", scoreRatio: 0.58, wrongFactor: 0.3 },
-      { name: "Dolly Rtw 💙", scoreRatio: 0.52, wrongFactor: 0.35 },
-      { name: "Geeta", scoreRatio: 0.44, wrongFactor: 0.4 },
-      { name: "Azuuu 1026", scoreRatio: 0.35, wrongFactor: 0.45 },
-    ];
-
-    const allParticipants = [
+    const merged = new Map<
+      string,
       {
-        name: userName,
+        id: string;
+        studentName: string;
+        studentPhone?: string;
+        score: number;
+        totalQuestions: number;
+        wrongCount: number;
+        percentage: number;
+        grade: string;
+      }
+    >();
+
+    serverAttempts.forEach((attempt) => merged.set(attempt.id, attempt));
+    getLocalTestAttempts(paper.testCode || paper.id).forEach((attempt) => {
+      merged.set(attempt.id, attempt);
+    });
+
+    const entries: LeaderboardEntry[] = Array.from(merged.values()).map(
+      (attempt) => ({
+        rank: 0,
+        name: attempt.studentName || "વિદ્યાર્થી",
+        score: attempt.score,
+        total: attempt.totalQuestions || totalQuestions,
+        wrong: attempt.wrongCount,
+        percentage: attempt.percentage,
+        grade: attempt.grade || calculateGrade(attempt.percentage),
+        isCurrentUser:
+          attempt.id === currentAttemptId ||
+          Boolean(
+            user?.phoneNumber &&
+              attempt.studentPhone &&
+              attempt.studentPhone === user.phoneNumber &&
+              attempt.id === currentAttemptId
+          ),
+      })
+    );
+
+    // Always include the attempt the student just finished, even if the
+    // server sync has not completed yet.
+    if (!entries.some((entry) => entry.isCurrentUser)) {
+      entries.push({
+        rank: 0,
+        name: user?.name || "તમે (You)",
         score: correctCount,
         total: totalQuestions,
         wrong: wrongCount,
         percentage: scorePercent,
-        grade: userGrade,
+        grade: calculateGrade(scorePercent),
         isCurrentUser: true,
-      },
-      ...peers.map((p) => {
-        const pScore = Math.max(1, Math.min(totalQuestions, Math.round(totalQuestions * p.scoreRatio)));
-        const pWrong = Math.max(0, Math.min(totalQuestions - pScore, Math.round(totalQuestions * p.wrongFactor)));
-        const pPct = totalQuestions > 0 ? (pScore / totalQuestions) * 100 : 0;
-        return {
-          name: p.name,
-          score: pScore,
-          total: totalQuestions,
-          wrong: pWrong,
-          percentage: pPct,
-          grade: calculateGrade(pPct),
-          isCurrentUser: false,
-        };
-      }),
-    ];
+      });
+    }
 
-    // Sort by Score descending, then by wrong count ascending
-    allParticipants.sort((a, b) => b.score - a.score || a.wrong - b.wrong);
+    entries.sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.wrong - b.wrong ||
+        b.percentage - a.percentage
+    );
 
-    // Assign rank 1, 2, 3...
-    return allParticipants.map((item, idx) => ({
-      ...item,
-      rank: idx + 1,
-    }));
+    return entries.map((entry, index) => ({ ...entry, rank: index + 1 }));
   };
 
   const leaderboardList = buildLeaderboardEntries();
@@ -255,9 +319,78 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
             )}
 
             {!isSubmitted && (
-              <div className="flex items-center space-x-1 bg-white/20 px-2.5 py-1 rounded-full text-xs font-mono font-bold">
-                <Clock className="w-3.5 h-3.5" />
-                <span>{formatTimer(timeLeft)}</span>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowTimerPopover(!showTimerPopover)}
+                  className="flex items-center space-x-1.5 bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-full text-xs font-mono font-bold transition-all border border-white/20"
+                  title="સમય બદલો / ટાઈમ ઉમેરો (Adjust Timer)"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{formatTimer(timeLeft)}</span>
+                  <span className="text-[10px] bg-white/30 px-1 rounded hover:bg-white/40">+/-</span>
+                </button>
+
+                {showTimerPopover && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white text-slate-800 rounded-2xl shadow-2xl p-3 border border-slate-200 z-50 animate-fadeIn text-xs space-y-2.5">
+                    <div className="flex items-center justify-between border-b pb-1.5">
+                      <span className="font-bold text-slate-800 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-brand-600" />
+                        <span>ટેસ્ટ સમય કસ્ટમાઇઝ કરો</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowTimerPopover(false)}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] text-slate-500 font-medium">ઝડપી સમય ઉમેરો:</span>
+                      <div className="grid grid-cols-3 gap-1 mt-1">
+                        {[5, 10, 15].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              setTimeLeft((prev) => prev + m * 60);
+                              setShowTimerPopover(false);
+                            }}
+                            className="px-2 py-1 bg-brand-50 hover:bg-brand-100 text-brand-700 font-bold rounded-lg border border-brand-200 text-xs"
+                          >
+                            +{m} Min
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="pt-1 border-t border-slate-100">
+                      <span className="text-[11px] text-slate-500 font-medium">કસ્ટમ મિનિટ સેટ કરો:</span>
+                      <div className="flex gap-1.5 mt-1">
+                        <input
+                          type="number"
+                          min={1}
+                          max={300}
+                          value={customAddMinutes}
+                          onChange={(e) => setCustomAddMinutes(Math.max(1, Number(e.target.value)))}
+                          className="w-16 px-2 py-1 border border-slate-300 rounded-lg font-mono font-bold text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTimeLeft(customAddMinutes * 60);
+                            setShowTimerPopover(false);
+                          }}
+                          className="flex-1 px-2 py-1 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg text-xs"
+                        >
+                          સેટ કરો
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <button
@@ -283,6 +416,11 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
               entries={leaderboardList}
               webUrl={typeof window !== "undefined" ? window.location.href : "#"}
             />
+            {loadingAttempts && (
+              <p className="text-center text-[11px] text-slate-400 -mt-3">
+                અન્ય વિદ્યાર્થીઓના પરિણામ લોડ થઈ રહ્યાં છે...
+              </p>
+            )}
 
             {/* Answer Key & Explanation Review */}
             <div className="space-y-3 pt-2">
@@ -368,10 +506,14 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
             <div className="flex items-center justify-center gap-3 pt-3">
               <button
                 onClick={() => {
+                  submittedRef.current = false;
+                  timerArmedRef.current = false;
                   setSelectedAnswers({});
                   setIsSubmitted(false);
                   setCurrentIndex(0);
-                  setTimeLeft((paper.timeLimitMinutes || 60) * 60);
+                  setCurrentAttemptId(null);
+                  setServerAttempts([]);
+                  setTimeLeft(Math.max(60, (paper.timeLimitMinutes || 60) * 60));
                 }}
                 className="px-5 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700 flex items-center space-x-1.5"
               >

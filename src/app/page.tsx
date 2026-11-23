@@ -78,7 +78,7 @@ export default function Home() {
       <main className="min-h-screen bg-slate-50 flex flex-col">
         <header className="sticky top-0 z-40 bg-white/95 border-b border-slate-200 h-14"></header>
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-3 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
         </div>
       </main>
     );
@@ -121,7 +121,7 @@ export default function Home() {
                   >
                     <FileDown className="w-4 h-4" />
                     <span>ઓરિજિનલ પેપર્સ લાઇબ્રેરી (Drive)</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                       mainTab === "library" ? "bg-white/20 text-white" : "bg-orange-100 text-orange-800"
                     }`}>
                       4 પેપર્સ
@@ -139,7 +139,7 @@ export default function Home() {
                 >
                   <BookOpen className="w-4 h-4" />
                   <span>મારા ડિજિટલ પેપર્સ</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                     mainTab === "my_papers" ? "bg-white/20 text-white" : "bg-brand-100 text-brand-800"
                   }`}>
                     {papers.length}
