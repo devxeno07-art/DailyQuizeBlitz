@@ -398,6 +398,21 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                 </p>
               </div>
 
+              {/* Leaderboard Table Live Preview Button */}
+              <div className="bg-slate-900 rounded-2xl p-3 text-white border border-slate-800 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-amber-300">
+                    🏆 લીડરબોર્ડ પરિણામ ટેબલ (Leaderboard Table)
+                  </span>
+                  <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-mono">
+                    /results {generatedQuiz.code}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  ટેસ્ટના અંતે ટેલિગ્રામ ગ્રૂપમાં રેન્ક, સ્કોર, ખોટા જવાબો, ટકાવારી અને ગ્રેડ સાથેનું સુંદર સ્કોરબોર્ડ ટેબલ આપોઆપ મોકલાશે!
+                </p>
+              </div>
+
               {/* Group Sharing Actions */}
               <div className="space-y-2">
                 <div className="flex gap-2">

@@ -1,4 +1,4 @@
-import { Paper, Question } from "@/types";
+import { Paper, Question, TelegramQuiz } from "@/types";
 
 export const formatPaperForWhatsApp = (paper: Paper, includeAnswers = false): string => {
   let output = `📝 *${paper.title}*\n`;
@@ -34,6 +34,46 @@ export const formatPaperForWhatsApp = (paper: Paper, includeAnswers = false): st
 
   output += `\n✨ Created via MCQ Master App`;
   return output;
+};
+
+export interface ScoreboardParticipant {
+  rank: number;
+  name: string;
+  score: number;
+  total: number;
+  wrong: number;
+  percentage: number;
+  grade: string;
+}
+
+export const formatLeaderboardForTelegram = (
+  subject: string,
+  totalQuestions: number,
+  timePerQuestion: number = 30,
+  participants: ScoreboardParticipant[],
+  webUrl: string = "https://mcq-master.vercel.app"
+): string => {
+  let msg = `🏆 *મેગા મોક ટેસ્ટ પરિણામ અને લીડરબોર્ડ*\n\n`;
+  msg += `📚 *વિષય:* 📖 ${subject} (${totalQuestions} MCQs)\n`;
+  msg += `📊 *કુલ પ્રશ્નો:* ${totalQuestions} | ⏱ *સમય:* ${timePerQuestion} સે./પ્રશ્ન | 👥 *વિદ્યાર્થીઓ:* ${participants.length}\n\n`;
+  msg += `📋 *મોક ટેસ્ટ સ્કોરબોર્ડ ટેબલ (Top ${participants.length} / ${participants.length})*\n\n`;
+  msg += `\`ક્રમ  વિદ્યાર્થી       સ્કોર    ખોટા     %    ગ્રેડ\`\n`;
+  msg += `\`-------------------------------------------------\`\n`;
+
+  participants.forEach((p) => {
+    const medal = p.rank === 1 ? "🥇1" : p.rank === 2 ? "🥈2" : p.rank === 3 ? "🥉3" : `${p.rank} `;
+    const rankStr = medal.padEnd(4);
+    const cleanName = (p.name.length > 12 ? p.name.slice(0, 11) + "…" : p.name).padEnd(14);
+    const scoreStr = `${p.score}/${p.total}`.padEnd(8);
+    const wrongStr = p.wrong.toString().padEnd(6);
+    const pctStr = `${p.percentage.toFixed(1)}%`.padEnd(7);
+    const gradeStr = p.grade;
+    msg += `\`${rankStr} ${cleanName} ${scoreStr} ${wrongStr} ${pctStr} ${gradeStr}\`\n`;
+  });
+
+  msg += `\n👏 *ઉત્કૃષ્ટ પ્રદર્શન કરનાર તમામ વિદ્યાર્થીઓને ખૂબ ખૂબ અભિનંદન!* 🎯\n`;
+  msg += `🌐 *સંપૂર્ણ HTML Table & આન્સર કી:* [અહીં ક્લિક કરો](${webUrl})\n`;
+  return msg;
 };
 
 export const exportPaperAsJSON = (paper: Paper): void => {
