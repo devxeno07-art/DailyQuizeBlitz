@@ -742,16 +742,20 @@ const startQuizSession = async (
     existing.status !== "completed" &&
     existing.status !== "stopped"
   ) {
-    await sendMessage(
-      ctx,
-      `⏳ <b>આ ટેસ્ટ પહેલેથી જ આ ગ્રૂપમાં શરૂ થઈ ચૂકી છે!</b>\n\n` +
-        `🔑 કોડ: <code>${escapeHtml(quiz.code)}</code>\n` +
-        `👉 લાઈવ સ્કોર જોવા: <code>/results ${escapeHtml(
-          quiz.code
-        )}</code>\n` +
-        `👉 ટેસ્ટ બંધ કરવા: <code>/stop ${escapeHtml(quiz.code)}</code>`
-    );
-    return { ok: false, error: "Quiz already running" };
+    const ageMs = Date.now() - new Date(existing.startedAt).getTime();
+    const isStale = ageMs > 15 * 60 * 1000 || existing.status === "error";
+    if (!isStale) {
+      await sendMessage(
+        ctx,
+        `⏳ <b>આ ટેસ્ટ પહેલેથી જ આ ગ્રૂપમાં શરૂ થઈ ચૂકી છે!</b>\n\n` +
+          `🔑 કોડ: <code>${escapeHtml(quiz.code)}</code>\n` +
+          `👉 લાઈવ સ્કોર જોવા: <code>/results ${escapeHtml(
+            quiz.code
+          )}</code>\n` +
+          `👉 ટેસ્ટ બંધ કરવા: <code>/stop ${escapeHtml(quiz.code)}</code>`
+      );
+      return { ok: false, error: "Quiz already running" };
+    }
   }
 
   const scopedQuestions =
@@ -1016,12 +1020,29 @@ const handleStop = async (ctx: BotContext, code: string): Promise<void> => {
   }
 
   if (!session) {
-    await sendMessage(ctx, `❌ ચાલુ ટેસ્ટ સેશન મળ્યું નથી.`);
+    await sendMessage(ctx, `❌ આ ચેટમાં કોઈ ચાલુ ટેસ્ટ સેશન મળ્યું નથી.`);
+    return;
+  }
+
+  const fromUserId = String(ctx.fromUser?.id || "");
+  const isStarter =
+    session.startedBy && String(session.startedBy.id) === fromUserId;
+  const isPrivate = ctx.chatId > 0;
+
+  if (!ctx.isAdmin && !isPrivate && !isStarter) {
+    await sendMessage(
+      ctx,
+      `⛔ માત્ર એડમિન અથવા જેણે ટેસ્ટ શરૂ કરી હતી તે જ આ ટેસ્ટ બંધ કરી શકે છે.`
+    );
     return;
   }
 
   session.status = "stopped";
   await saveSession(session);
+  await sendMessage(
+    ctx,
+    `🛑 <b>મોક ટેસ્ટ બંધ કરવામાં આવી છે.</b>\nઅંતિમ પરિણામ નીચે મુજબ છે:`
+  );
   await sendLeaderboard(ctx, session, true);
 };
 
@@ -1255,12 +1276,8 @@ export const processTelegramUpdate = async (
     return { handled: true, action: "dispatched" };
   }
 
-  // STOP (admin only)
+  // STOP (allows bot admin, private chat, or session starter)
   if (cleanText.startsWith("/stop")) {
-    if (!isAdmin) {
-      await sendMessage(ctx, `⛔ માત્ર એડમિન જ ટેસ્ટ બંધ કરી શકે છે.`);
-      return { handled: true, action: "admin_denied" };
-    }
     const code = cleanText.split(/\s+/)[1] || "";
     await handleStop(ctx, code);
     return { handled: true, action: "stopped" };
@@ -1348,22 +1365,84 @@ export const processTelegramUpdate = async (
     return { handled: true, action: "results_sent" };
   }
 
+  // QUIZ LIST COMMAND (when user just types /quiz, /test, /quizzes or clicks /quiz button)
+  if (
+    cleanText === "/quiz" ||
+    cleanText === "/test" ||
+    cleanText === "/quizzes" ||
+    cleanText === "/tests"
+  ) {
+    const all = await getAllServerQuizzes();
+    if (all.length === 0) {
+      await sendMessage(
+        ctx,
+        `📚 <b>હાલમાં કોઈ મોક ટેસ્ટ ઉપલબ્ધ નથી.</b>\nMini App દ્વારા નવો ટેસ્ટ બનાવો!`,
+        {
+          inline_keyboard: [[createMiniAppButton(ctx, "🚀 Mini App ખોલો")]],
+        }
+      );
+      return { handled: true, action: "quizzes_empty" };
+    }
+
+    let msg = `📚 <b>ઉપલબ્ધ મોક ટેસ્ટ્સ (Mock Tests):</b>\n\n`;
+    const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+
+    all.slice(0, 10).forEach((q, idx) => {
+      const qCount = q.questions?.length || 0;
+      msg += `${idx + 1}. <b>${escapeHtml(q.title || "Mock Test")}</b>\n`;
+      msg += `   📝 કોડ: <code>${escapeHtml(q.code)}</code> (${qCount} MCQs)\n`;
+      msg += `   👉 શરૂ કરવા ક્લિક કરો: <code>/quiz ${escapeHtml(q.code)}</code>\n\n`;
+
+      if (keyboard.length < 5) {
+        keyboard.push([
+          {
+            text: `▶️ ${q.code} (${qCount} MCQs) - ${q.title.slice(0, 24)}`,
+            callback_data: `/quiz ${q.code}`,
+          },
+        ]);
+      }
+    });
+
+    msg += `<i>કોઈપણ ટેસ્ટ શરૂ કરવા ઉપરના બટન પર ક્લિક કરો અથવા કમાન્ડ લખો: <code>/quiz &lt;CODE&gt;</code></i>`;
+
+    await sendMessage(ctx, msg, { inline_keyboard: keyboard });
+    return { handled: true, action: "quizzes_list" };
+  }
+
   // QUIZ CODE PARSING
   let quizCode = "";
   if (cleanText.startsWith("/quiz") || cleanText.startsWith("/test")) {
-    quizCode = cleanText.split(/\s+/)[1] || "";
-  } else if (/^[A-Za-z]{3,12}-\d{3,6}$/.test(cleanText)) {
-    // Bare test code typed in the group, e.g. GSRTC-4821
+    quizCode = cleanText.replace(/^(\/quiz|\/test)\s*/i, "").trim();
+  } else if (
+    /^[A-Za-z0-9_-]{3,20}$/.test(cleanText) &&
+    !cleanText.startsWith("/")
+  ) {
+    // Bare test code typed in the group, e.g. TEST-1062, 1062, GSRTC-4821
     quizCode = cleanText;
   }
 
   if (quizCode) {
     const quiz = await getServerQuizByCode(quizCode);
     if (!quiz) {
+      const all = await getAllServerQuizzes();
+      let suggestions = "";
+      if (all.length > 0) {
+        suggestions =
+          `\n\n💡 <b>ઉપલબ્ધ ટેસ્ટ કોડ્સ:</b>\n` +
+          all
+            .slice(0, 6)
+            .map(
+              (q) =>
+                `• <code>/quiz ${escapeHtml(q.code)}</code> - ${escapeHtml(
+                  q.title
+                )} (${q.questions?.length || 0} MCQs)`
+            )
+            .join("\n");
+      }
       await sendMessage(
         ctx,
         `❌ <b>ટેસ્ટ કોડ '${escapeHtml(quizCode)}' મળ્યો નથી!</b>\n` +
-          `કૃપા કરીને સાચો કોડ દાખલ કરો અથવા Mini App પરથી નવો કોડ બનાવો.`
+          `કૃપા કરીને સાચો કોડ દાખલ કરો અથવા નીચે આપેલા કોડ્સમાંથી પસંદ કરો:${suggestions}`
       );
       return { handled: true, action: "quiz_not_found" };
     }

@@ -127,7 +127,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ paper, isOpen, onClose
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Link
-                href={`/pdf-studio?paperId=${paper.id}`}
+                href={`/pdf-studio?paperId=${paper.id}&quizCode=${paper.testCode || ""}`}
                 className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors text-center"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />

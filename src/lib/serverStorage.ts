@@ -160,10 +160,60 @@ export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
 export const getServerQuizByCode = async (
   code: string
 ): Promise<TelegramQuiz | null> => {
-  const cleanCode = code.trim().toUpperCase();
-  if (!cleanCode) return null;
+  if (!code) return null;
+  let decoded = code;
+  try {
+    decoded = decodeURIComponent(code);
+  } catch {}
+
+  const raw = decoded.trim();
+  if (!raw) return null;
+
+  // Clean code: remove leading /quiz, /test, #, test_
+  const clean = raw
+    .replace(/^(\/quiz|\/test)\s*/i, "")
+    .replace(/^[#]/, "")
+    .replace(/^test_/i, "")
+    .trim()
+    .toUpperCase();
+
+  if (!clean) return null;
+
   const all = await getAllServerQuizzes();
-  return all.find((q) => q.code.toUpperCase() === cleanCode) || null;
+
+  // 1. Direct match on code
+  let match = all.find((q) => q.code.toUpperCase() === clean);
+  if (match) return match;
+
+  // 2. Direct match on TEST- prefix if user passed just the numbers e.g. "1062"
+  match = all.find((q) => q.code.toUpperCase() === `TEST-${clean}`);
+  if (match) return match;
+
+  // 3. Match stripping "TEST-" prefix from both
+  const cleanBare = clean.replace(/^TEST-/, "");
+  match = all.find(
+    (q) => q.code.toUpperCase().replace(/^TEST-/, "") === cleanBare
+  );
+  if (match) return match;
+
+  // 4. Match alphanumeric only
+  const cleanAlnum = clean.replace(/[^A-Z0-9]/g, "");
+  match = all.find(
+    (q) => q.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase() === cleanAlnum
+  );
+  if (match) return match;
+
+  // 5. Match by paperId
+  match = all.find(
+    (q) =>
+      Boolean(q.paperId) &&
+      (q.paperId === raw ||
+        q.paperId?.toUpperCase() === clean ||
+        q.paperId?.toUpperCase() === raw.toUpperCase())
+  );
+  if (match) return match;
+
+  return null;
 };
 
 export const deleteServerQuiz = async (

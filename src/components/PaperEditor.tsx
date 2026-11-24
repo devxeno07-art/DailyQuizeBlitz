@@ -37,7 +37,8 @@ import {
   Trophy,
   Clock,
   Lock,
-  CopyPlus
+  CopyPlus,
+  Printer
 } from "lucide-react";
 import { BulkImportModal } from "./BulkImportModal";
 
@@ -522,7 +523,17 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
             </button>
           )}
 
-          {/* 6. Export / Print */}
+          {/* 6. PDF Studio (Direct Auto-Load) */}
+          <a
+            href={`/pdf-studio?paperId=${currentPaper.id}&quizCode=${currentPaper.testCode || ""}`}
+            className="flex-1 min-w-[70px] sm:flex-initial flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs border border-emerald-300 transition-colors"
+            title="PDF Studio માં આ પેપર પ્રિન્ટ / એક્સપોર્ટ કરો"
+          >
+            <Printer className="w-3.5 h-3.5 text-emerald-600" />
+            <span>PDF Studio</span>
+          </a>
+
+          {/* 7. Export / Print */}
           <button
             onClick={() => onExport({ ...currentPaper, questions })}
             className="p-1.5 sm:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex-shrink-0"

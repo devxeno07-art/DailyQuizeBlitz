@@ -94,6 +94,7 @@ function PdfStudioContent() {
   const paperId = searchParams.get("paperId");
   const quizCodeParam = searchParams.get("quizCode");
 
+  const [communityPapers, setCommunityPapers] = useState<Paper[]>([]);
   const [theme, setTheme] = useState<"blue" | "royal" | "emerald" | "crimson">("blue");
   const [columns, setColumns] = useState<"1" | "2">("1");
   const [fontSize, setFontSize] = useState("13px");
@@ -129,50 +130,128 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
 
   const autoLoadedRef = useRef(false);
 
-  const loadTelegramQuizByCode = async (code: string) => {
-    const trimmed = (code || "").trim();
-    if (!trimmed) return;
+  // Helper to apply loaded TelegramQuiz
+  const applyQuiz = (qz: TelegramQuiz) => {
+    setTitle(qz.title || "Telegram Mock Test");
+    setSubtitle(
+      qz.subject
+        ? `વિષય: ${qz.subject} • ટેલિગ્રામ કોડ: ${qz.code}`
+        : `ટેલિગ્રામ ટેસ્ટ: ${qz.code}`
+    );
+    const cleanFile = (qz.title || qz.code)
+      .trim()
+      .replace(/[<>:"/\\|?*]+/g, "")
+      .replace(/\s+/g, "_");
+    setFileName(cleanFile);
+    if (qz.questions && qz.questions.length > 0) {
+      setRawText(formatQuestionsToRawText(qz.questions));
+      setLoadStatusMsg(`✓ ટેસ્ટ [${qz.code}] ના ${qz.questions.length} પ્રશ્નો સફળતાપૂર્વક લોડ થયા!`);
+    } else {
+      setLoadStatusMsg(`! ટેસ્ટ [${qz.code}] મળ્યો પરંતુ તેમાં પ્રશ્નો નથી.`);
+    }
+  };
+
+  // Helper to apply loaded Paper
+  const applyPaper = (p: Paper) => {
+    setTitle(p.title || "સ્પર્ધાત્મક પરીક્ષા પ્રશ્નપત્ર");
+    setSubtitle(
+      p.subject
+        ? `વિષય: ${p.subject}${p.testCode ? ` • ટેલિગ્રામ કોડ: ${p.testCode}` : ""}`
+        : (p.testCode ? `ટેલિગ્રામ ટેસ્ટ: ${p.testCode}` : "")
+    );
+    const cleanFile = (p.title || p.testCode || "paper")
+      .trim()
+      .replace(/[<>:"/\\|?*]+/g, "")
+      .replace(/\s+/g, "_");
+    setFileName(cleanFile);
+    if (p.questions && p.questions.length > 0) {
+      setRawText(formatQuestionsToRawText(p.questions));
+      setLoadStatusMsg(`✓ પેપર "${p.title}" ના ${p.questions.length} પ્રશ્નો સફળતાપૂર્વક લોડ થયા!`);
+    } else {
+      setLoadStatusMsg(`! પસંદ કરેલા પેપરમાં પ્રશ્નો નથી.`);
+    }
+  };
+
+  const loadTelegramQuizByCode = async (rawCode: string) => {
+    const raw = (rawCode || "").trim();
+    if (!raw) return;
     setIsLoadingQuiz(true);
     setLoadStatusMsg("");
+
+    const clean = raw
+      .replace(/^\/quiz\s*/i, "")
+      .replace(/^\/test\s*/i, "")
+      .replace(/^#/, "")
+      .trim()
+      .toUpperCase();
+
+    const candidates = [clean];
+    if (/^\d+$/.test(clean)) {
+      candidates.push(`TEST-${clean}`);
+      candidates.push(`GSRTC-${clean}`);
+    }
+
     try {
-      let qz: TelegramQuiz | null = null;
+      // 1. Try server quiz endpoint
+      for (const cand of candidates) {
+        try {
+          const res = await fetch(`/api/telegram/quiz/${encodeURIComponent(cand)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.quiz) {
+              applyQuiz(data.quiz);
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Try community papers from server
       try {
-        const res = await fetch(`/api/telegram/quiz/${encodeURIComponent(trimmed)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.quiz) {
-            qz = data.quiz;
+        const pRes = await fetch("/api/papers");
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (pData.ok && Array.isArray(pData.papers)) {
+            const found = pData.papers.find((p: Paper) =>
+              candidates.some(
+                (c) =>
+                  p.testCode?.toUpperCase() === c ||
+                  p.id === c ||
+                  p.testCode?.toUpperCase().endsWith(c)
+              )
+            );
+            if (found) {
+              applyPaper(found);
+              return;
+            }
           }
         }
-      } catch (netErr) {
-        // Network error, try local storage fallback
-      }
+      } catch {}
 
-      if (!qz) {
-        qz = await getTelegramQuizByCode(trimmed);
-      }
-
-      if (qz) {
-        setTitle(qz.title || "Telegram Mock Test");
-        setSubtitle(
-          qz.subject
-            ? `વિષય: ${qz.subject} • ટેલિગ્રામ કોડ: ${qz.code}`
-            : `ટેલિગ્રામ ટેસ્ટ: ${qz.code}`
-        );
-        const cleanFile = (qz.title || qz.code)
-          .trim()
-          .replace(/[<>:"/\\|?*]+/g, "")
-          .replace(/\s+/g, "_");
-        setFileName(cleanFile);
-        if (qz.questions && qz.questions.length > 0) {
-          setRawText(formatQuestionsToRawText(qz.questions));
-          setLoadStatusMsg(`✓ ટેસ્ટ [${qz.code}] ના ${qz.questions.length} પ્રશ્નો સફળતાપૂર્વક લોડ થયા!`);
-        } else {
-          setLoadStatusMsg(`! ટેસ્ટ [${qz.code}] મળ્યો પરંતુ તેમાં પ્રશ્નો નથી.`);
+      // 3. Fallback to local storage
+      for (const cand of candidates) {
+        const local = await getTelegramQuizByCode(cand);
+        if (local) {
+          applyQuiz(local);
+          return;
         }
-      } else {
-        setLoadStatusMsg(`❌ કોડ [${trimmed}] વાળો ટેસ્ટ મળ્યો નથી.`);
       }
+
+      // 4. Try local papers
+      const localPaper = (papers || []).find((p) =>
+        candidates.some(
+          (c) =>
+            p.testCode?.toUpperCase() === c ||
+            p.id === c ||
+            p.testCode?.toUpperCase().endsWith(c)
+        )
+      );
+      if (localPaper) {
+        applyPaper(localPaper);
+        return;
+      }
+
+      setLoadStatusMsg(`❌ કોડ [${clean}] વાળો ટેસ્ટ મળ્યો નથી. કૃપા કરીને સાચો કોડ દાખલ કરો.`);
     } catch (err) {
       console.error(err);
       setLoadStatusMsg(`❌ ટેસ્ટ લોડ કરવામાં ભૂલ આવી.`);
@@ -181,26 +260,60 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
     }
   };
 
-  const loadPaperById = (pId: string) => {
-    if (!pId || !papers) return;
-    const found = papers.find((p) => p.id === pId);
-    if (!found) return;
-    setTitle(found.title || "સ્પર્ધાત્મક પરીક્ષા પ્રશ્નપત્ર");
-    setSubtitle(found.subject ? `વિષય: ${found.subject} • મોક ટેસ્ટ` : "");
-    const cleanFile = (found.title || "paper")
-      .trim()
-      .replace(/[<>:"/\\|?*]+/g, "")
-      .replace(/\s+/g, "_");
-    setFileName(cleanFile);
-    if (found.questions && found.questions.length > 0) {
-      setRawText(formatQuestionsToRawText(found.questions));
-      setLoadStatusMsg(`✓ પેપર "${found.title}" ના ${found.questions.length} પ્રશ્નો સફળતાપૂર્વક લોડ થયા!`);
-    } else {
-      setLoadStatusMsg(`! પસંદ કરેલા પેપરમાં પ્રશ્નો નથી.`);
+  const loadPaperById = async (pId: string) => {
+    if (!pId) return;
+    setIsLoadingQuiz(true);
+
+    // 1. Check local papers
+    const foundLocal = (papers || []).find((p) => p.id === pId || p.testCode === pId);
+    if (foundLocal) {
+      applyPaper(foundLocal);
+      setIsLoadingQuiz(false);
+      return;
     }
+
+    // 2. Check community papers from state
+    const foundComm = (communityPapers || []).find((p) => p.id === pId || p.testCode === pId);
+    if (foundComm) {
+      applyPaper(foundComm);
+      setIsLoadingQuiz(false);
+      return;
+    }
+
+    // 3. Fetch from /api/papers
+    try {
+      const res = await fetch("/api/papers");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.papers)) {
+          const found = data.papers.find((p: Paper) => p.id === pId || p.testCode === pId);
+          if (found) {
+            applyPaper(found);
+            setIsLoadingQuiz(false);
+            return;
+          }
+        }
+      }
+    } catch {}
+
+    // 4. If pId could be a test code, try loading as quiz code
+    await loadTelegramQuizByCode(pId);
+    setIsLoadingQuiz(false);
   };
 
-  // Auto-populate from selected paper or telegram quiz on initial mount (guarded from re-fetching on AuthContext updates)
+  // Fetch community papers on mount for the dropdown
+  useEffect(() => {
+    fetch("/api/papers")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok && Array.isArray(data.papers)) {
+          setCommunityPapers(data.papers);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Auto-populate from selected paper or telegram quiz on mount
   useEffect(() => {
     if (autoLoadedRef.current) return;
 
@@ -208,11 +321,11 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
       autoLoadedRef.current = true;
       setQuizCodeInput(quizCodeParam);
       loadTelegramQuizByCode(quizCodeParam);
-    } else if (paperId && papers && papers.length > 0) {
+    } else if (paperId) {
       autoLoadedRef.current = true;
       loadPaperById(paperId);
     }
-  }, [quizCodeParam, paperId, papers]);
+  }, [quizCodeParam, paperId]);
 
   // Parse raw text into structured MCQ items
   const parsedItems = useMemo((): ParsedMCQ[] => {
@@ -459,7 +572,7 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
                 </div>
               </div>
 
-              {papers && papers.length > 0 && (
+              {((papers && papers.length > 0) || (communityPapers && communityPapers.length > 0)) && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-slate-700 flex items-center gap-1">
                     <FileText className="w-3.5 h-3.5 text-slate-500" />
@@ -470,14 +583,27 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
                       if (e.target.value) loadPaperById(e.target.value);
                     }}
                     defaultValue=""
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none"
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none max-w-xs sm:max-w-sm truncate"
                   >
                     <option value="" disabled>-- પેપર સિલેક્ટ કરો --</option>
-                    {papers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.title} ({p.questions?.length || 0} પ્રશ્નો)
-                      </option>
-                    ))}
+                    {papers && papers.length > 0 && (
+                      <optgroup label="મારા પેપર્સ">
+                        {papers.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.title} ({p.questions?.length || 0} પ્રશ્નો)
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {communityPapers && communityPapers.length > 0 && (
+                      <optgroup label="કમ્યુનિટી / જાહેર ટેસ્ટ્સ">
+                        {communityPapers.map((cp) => (
+                          <option key={cp.id} value={cp.id}>
+                            [{cp.testCode || "TEST"}] {cp.title} ({cp.questions?.length || 0} પ્રશ્નો)
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               )}

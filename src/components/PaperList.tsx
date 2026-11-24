@@ -30,7 +30,8 @@ import {
   Lock,
   Globe,
   RefreshCw,
-  Eye
+  Eye,
+  Printer
 } from "lucide-react";
 
 interface PaperListProps {
@@ -737,6 +738,17 @@ export const PaperList: React.FC<PaperListProps> = ({
                     >
                       <Share2 className="w-3.5 h-3.5" />
                     </button>
+
+                    {/* PDF Studio (Direct Auto-Load) */}
+                    <a
+                      href={`/pdf-studio?paperId=${paper.id}&quizCode=${paper.testCode || ""}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs border border-emerald-300 transition-colors"
+                      title="PDF Studio માં પ્રશ્નો લોડ કરો અને પ્રિન્ટ કરો"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>PDF</span>
+                    </a>
                   </div>
 
                   <div className="flex items-center gap-1">
