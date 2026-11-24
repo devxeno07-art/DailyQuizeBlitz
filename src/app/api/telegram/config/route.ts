@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerBotConfig, saveServerBotConfig } from "@/lib/serverStorage";
 import { isAdminRequest, unauthorized } from "@/lib/adminAuth";
 import { TelegramBotConfig } from "@/types";
+import { setupTelegramWebhook } from "@/lib/telegramBotEngine";
 
 export const dynamic = "force-dynamic";
 
@@ -70,11 +71,36 @@ export async function POST(req: NextRequest) {
     // Blank values never overwrite an existing secret/token. This lets the
     // admin panel show "configured" without ever receiving the raw token.
     const incomingToken = String(body.botToken ?? "").trim();
+    const tokenChanged = Boolean(incomingToken && incomingToken !== current.botToken);
     next.botToken = incomingToken || current.botToken;
     const incomingSecret = String(body.webhookSecret ?? "").trim();
-    next.webhookSecret = incomingSecret || current.webhookSecret || "";
+    next.webhookSecret =
+      incomingSecret ||
+      current.webhookSecret ||
+      process.env.TELEGRAM_WEBHOOK_SECRET ||
+      "";
 
     await saveServerBotConfig(next);
+
+    let webhookResult: any = null;
+    if (tokenChanged && next.botToken) {
+      try {
+        if (current.botToken && current.botToken !== next.botToken) {
+          await fetch(`https://api.telegram.org/bot${current.botToken}/deleteWebhook`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ drop_pending_updates: true }),
+          }).catch(() => {});
+        }
+        const origin =
+          req.nextUrl?.origin ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          "https://dailyquizeblitz.vercel.app";
+        webhookResult = await setupTelegramWebhook(next, origin, "set");
+      } catch (err: any) {
+        console.warn("[config] Auto webhook setup error:", err);
+      }
+    }
 
     let menuResult: any = null;
 
@@ -118,6 +144,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       config: publicConfig(next, true),
       menuResult,
+      webhookResult,
     });
   } catch (e: any) {
     return NextResponse.json(

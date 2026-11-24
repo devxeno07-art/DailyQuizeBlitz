@@ -39,9 +39,9 @@ export const getServerBotConfig = async (): Promise<TelegramBotConfig> => {
   return {
     ...defaults,
     ...stored,
-    // Environment variables always win so a leaked/stored token can be
-    // rotated without editing files. Everything else comes from admin config.
-    botToken: process.env.TELEGRAM_BOT_TOKEN || stored.botToken || "",
+    // Admin config takes precedence so changing the bot in the admin panel
+    // immediately activates the new bot. Environment variable acts as fallback.
+    botToken: stored.botToken || process.env.TELEGRAM_BOT_TOKEN || "",
     botUsername: stored.botUsername || defaults.botUsername,
     adminTelegramId:
       stored.adminTelegramId || defaults.adminTelegramId || "",

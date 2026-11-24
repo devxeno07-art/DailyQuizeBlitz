@@ -63,7 +63,7 @@ const warnIfEphemeral = (): void => {
 };
 
 const redisUrl = (key: string): string =>
-  `${KV_URL.replace(/\/$/, "")}/${encodeURIComponent(KEY_PREFIX + key)}`;
+  `${KV_URL.replace(/\/$/, "")}/set/${encodeURIComponent(KEY_PREFIX + key)}`;
 
 const redisGet = async (key: string): Promise<string | null> => {
   const res = await fetch(`${KV_URL.replace(/\/$/, "")}/get/${encodeURIComponent(KEY_PREFIX + key)}`, {
