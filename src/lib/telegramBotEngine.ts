@@ -1411,19 +1411,34 @@ export const processTelegramUpdate = async (
 
   // QUIZ CODE PARSING
   let quizCode = "";
+  let isExplicitCommand = false;
+
   if (cleanText.startsWith("/quiz") || cleanText.startsWith("/test")) {
     quizCode = cleanText.replace(/^(\/quiz|\/test)\s*/i, "").trim();
-  } else if (
-    /^[A-Za-z0-9_-]{3,20}$/.test(cleanText) &&
-    !cleanText.startsWith("/")
-  ) {
-    // Bare test code typed in the group, e.g. TEST-1062, 1062, GSRTC-4821
+    isExplicitCommand = true;
+  } else if (/^[A-Za-z]{2,10}-\d{3,6}$/i.test(cleanText)) {
+    // Strict test code format e.g. TEST-1062, GSRTC-1062, TEST-8613
+    quizCode = cleanText.toUpperCase();
+  } else if (/^#(TEST-)?\d{3,6}$/i.test(cleanText)) {
+    // Hash format e.g. #1062 or #TEST-1062
+    quizCode = cleanText.replace(/^#/, "").toUpperCase();
+  } else if (ctx.chatId > 0 && /^\d{3,6}$/.test(cleanText)) {
+    // Only in private DM chat with the bot, allow pure digit codes like 1062
     quizCode = cleanText;
   }
 
   if (quizCode) {
     const quiz = await getServerQuizByCode(quizCode);
     if (!quiz) {
+      // In a group, never reply to normal chat words - only reply if user explicitly typed /quiz or an actual test code pattern
+      const isGroup = ctx.chatId < 0;
+      const looksLikeTestCode =
+        /^[A-Za-z]{2,10}-\d{3,6}$/i.test(quizCode) ||
+        /^\d{3,6}$/.test(quizCode);
+      if (isGroup && !isExplicitCommand && !looksLikeTestCode) {
+        return { handled: false };
+      }
+
       const all = await getAllServerQuizzes();
       let suggestions = "";
       if (all.length > 0) {
