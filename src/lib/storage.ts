@@ -343,6 +343,7 @@ export const setLocalPapers = (papers: Paper[]): void => {
   try {
     localStorage.setItem(STORAGE_KEY_PAPERS, JSON.stringify(papers));
     broadcastChannel?.postMessage({ type: "PAPERS_UPDATED" });
+    window.dispatchEvent(new CustomEvent("mcq_papers_updated", { detail: papers }));
   } catch (e) {
     console.error("Error writing local papers", e);
   }
@@ -531,13 +532,31 @@ export const savePaper = async (paper: Paper): Promise<void> => {
   }
 };
 
-export const deletePaper = async (paperId: string): Promise<void> => {
+export const deletePaper = async (paperId: string, testCode?: string): Promise<void> => {
   const localPapers = getLocalPapers();
-  const filtered = localPapers.filter(p => p.id !== paperId);
+  const target = localPapers.find((p) => p.id === paperId);
+  const filtered = localPapers.filter((p) => p.id !== paperId);
   setLocalPapers(filtered);
 
   if (typeof window !== "undefined") {
     localStorage.removeItem(`mcq_draft_${paperId}`);
+    window.dispatchEvent(
+      new CustomEvent("mcq_papers_updated", { detail: filtered })
+    );
+
+    // Also delete from server storage (Upstash Redis)
+    const code = testCode || target?.testCode || "";
+    const user = getCurrentUser();
+    const query = new URLSearchParams();
+    if (paperId) query.set("id", paperId);
+    if (code) query.set("code", code);
+    if (user?.phoneNumber) query.set("userPhone", user.phoneNumber);
+
+    try {
+      await fetch(`/api/papers?${query.toString()}`, { method: "DELETE" });
+    } catch (e) {
+      console.warn("Could not delete paper from server", e);
+    }
   }
 
   const { db } = initFirebase();
@@ -550,12 +569,30 @@ export const deletePaper = async (paperId: string): Promise<void> => {
   }
 };
 
+export const fetchCommunityPapers = async (): Promise<Paper[]> => {
+  if (typeof window === "undefined") return [];
+  try {
+    const res = await fetch("/api/papers", { cache: "no-store" });
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.papers)) {
+      return data.papers;
+    }
+  } catch (e) {
+    console.warn("Could not fetch community papers:", e);
+  }
+  return [];
+};
+
 export const subscribeUserPapers = (
-  userId: string, 
+  userId: string,
   callback: (papers: Paper[]) => void
 ): (() => void) => {
-  const initialLocal = getLocalPapers().filter(p => p.userId === userId);
-  callback(initialLocal);
+  const notify = () => {
+    const updated = getLocalPapers().filter((p) => p.userId === userId);
+    callback(updated);
+  };
+
+  notify();
 
   const { db } = initFirebase();
   let unsubscribeFirestore: (() => void) | null = null;
@@ -563,21 +600,28 @@ export const subscribeUserPapers = (
   if (db) {
     try {
       const q = query(collection(db, "papers"), where("userId", "==", userId));
-      unsubscribeFirestore = onSnapshot(q, (snapshot) => {
-        const cloudPapers: Paper[] = [];
-        snapshot.forEach((doc) => {
-          cloudPapers.push(doc.data() as Paper);
-        });
-        cloudPapers.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        
-        const currentLocal = getLocalPapers();
-        const otherPapers = currentLocal.filter(p => p.userId !== userId);
-        setLocalPapers([...cloudPapers, ...otherPapers]);
+      unsubscribeFirestore = onSnapshot(
+        q,
+        (snapshot) => {
+          const cloudPapers: Paper[] = [];
+          snapshot.forEach((doc) => {
+            cloudPapers.push(doc.data() as Paper);
+          });
+          cloudPapers.sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
 
-        callback(cloudPapers);
-      }, (error) => {
-        console.warn("Firestore subscription error, using local:", error);
-      });
+          const currentLocal = getLocalPapers();
+          const otherPapers = currentLocal.filter((p) => p.userId !== userId);
+          setLocalPapers([...cloudPapers, ...otherPapers]);
+
+          callback(cloudPapers);
+        },
+        (error) => {
+          console.warn("Firestore subscription error, using local:", error);
+        }
+      );
     } catch (err) {
       console.warn("Error setting up firestore listener:", err);
     }
@@ -585,16 +629,25 @@ export const subscribeUserPapers = (
 
   const handleMessage = (e: MessageEvent) => {
     if (e.data?.type === "PAPERS_UPDATED") {
-      const updated = getLocalPapers().filter(p => p.userId === userId);
-      callback(updated);
+      notify();
     }
   };
 
+  const handleLocalEvent = () => {
+    notify();
+  };
+
   broadcastChannel?.addEventListener("message", handleMessage);
+  if (typeof window !== "undefined") {
+    window.addEventListener("mcq_papers_updated", handleLocalEvent);
+  }
 
   return () => {
     if (unsubscribeFirestore) unsubscribeFirestore();
     broadcastChannel?.removeEventListener("message", handleMessage);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("mcq_papers_updated", handleLocalEvent);
+    }
   };
 };
 

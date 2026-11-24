@@ -39,6 +39,7 @@ export interface Paper {
   id: string;
   userId: string; // phone number of author
   userName: string;
+  creatorPhone?: string; // phone number or telegram ID of creator
   title: string;
   subject: string;
   category: string; // GSRTC, GPSC, Police, General, etc.

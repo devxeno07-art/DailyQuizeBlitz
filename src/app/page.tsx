@@ -104,6 +104,7 @@ export default function Home() {
             onExport={handleOpenExport}
             onOpenTelegram={handleOpenTelegram}
             onOpenLeaderboard={handleOpenLeaderboard}
+            onDeletePaper={() => setSelectedPaper(null)}
           />
         ) : (
           <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 space-y-4">

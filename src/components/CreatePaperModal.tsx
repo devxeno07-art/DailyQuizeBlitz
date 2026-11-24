@@ -128,24 +128,26 @@ export const CreatePaperModal: React.FC<CreatePaperModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100 max-h-[92vh] flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-brand-600 to-indigo-600 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <BookOpen className="w-5 h-5" />
-            <h3 className="font-bold text-base">નવું પ્રશ્નપત્ર / પ્રોજેક્ટ બનાવો</h3>
+        <div className="px-4 py-3 sm:px-6 sm:py-4 bg-gradient-to-r from-brand-600 to-indigo-600 text-white flex items-center justify-between">
+          <div className="flex items-center space-x-2 min-w-0">
+            <BookOpen className="w-5 h-5 flex-shrink-0" />
+            <h3 className="font-bold text-sm sm:text-base truncate">
+              નવું પ્રશ્નપત્ર / પ્રોજેક્ટ બનાવો
+            </h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors"
+            className="p-1 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors flex-shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-3.5 sm:space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               પ્રશ્નપત્રનું નામ / શીર્ષક (Paper Title) *

@@ -127,6 +127,27 @@ export const getServerQuizByCode = async (
   return all.find((q) => q.code.toUpperCase() === cleanCode) || null;
 };
 
+export const deleteServerQuiz = async (
+  codeOrPaperId: string
+): Promise<boolean> => {
+  const target = codeOrPaperId.trim().toUpperCase();
+  if (!target) return false;
+
+  return await withKeyLock(QUIZZES_KEY, async () => {
+    const all = await getAllServerQuizzes();
+    const filtered = all.filter(
+      (q) =>
+        q.code.toUpperCase() !== target &&
+        String(q.paperId || "").toUpperCase() !== target
+    );
+    if (filtered.length !== all.length) {
+      await kvSetJson(QUIZZES_KEY, filtered);
+      return true;
+    }
+    return false;
+  });
+};
+
 // ==========================================
 // Live quiz sessions (real poll answers)
 // ==========================================

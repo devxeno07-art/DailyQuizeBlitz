@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Paper, Question } from "@/types";
-import { deletePaper, savePaper, generateTestCode } from "@/lib/storage";
+import { deletePaper, savePaper, generateTestCode, fetchCommunityPapers } from "@/lib/storage";
 import { SAMPLE_GSRTC_PAPER } from "@/data/samplePaper";
 import { 
   Plus, 
@@ -25,7 +25,12 @@ import {
   Upload,
   FileJson,
   CopyPlus,
-  Loader2
+  Loader2,
+  Users,
+  Lock,
+  Globe,
+  RefreshCw,
+  Eye
 } from "lucide-react";
 
 interface PaperListProps {
@@ -46,6 +51,9 @@ export const PaperList: React.FC<PaperListProps> = ({
   onOpenLeaderboard,
 }) => {
   const { user, papers } = useAuth();
+  const [paperScope, setPaperScope] = useState<"my" | "community" | "all">("my");
+  const [communityPapers, setCommunityPapers] = useState<Paper[]>([]);
+  const [loadingCommunity, setLoadingCommunity] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -53,6 +61,33 @@ export const PaperList: React.FC<PaperListProps> = ({
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadCommunity = useCallback(async () => {
+    setLoadingCommunity(true);
+    try {
+      const list = await fetchCommunityPapers();
+      setCommunityPapers(list);
+    } catch (e) {
+      console.warn("Could not load community papers", e);
+    } finally {
+      setLoadingCommunity(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCommunity();
+
+    const handleUpdate = () => {
+      loadCommunity();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("mcq_papers_updated", handleUpdate);
+      return () => {
+        window.removeEventListener("mcq_papers_updated", handleUpdate);
+      };
+    }
+  }, [loadCommunity]);
 
   if (!user) return null;
 
@@ -64,27 +99,70 @@ export const PaperList: React.FC<PaperListProps> = ({
     setTimeout(() => setCopiedCodeId(null), 2000);
   };
 
-  const filteredPapers = papers.filter((paper) => {
-    const matchesSearch = 
-      paper.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paper.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paper.category?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Separate personal papers vs community papers created by other users
+  const myPapers = papers;
+  const communityOnlyPapers = communityPapers.filter(
+    (cp) =>
+      !myPapers.some(
+        (mp) =>
+          mp.id === cp.id ||
+          (mp.testCode && cp.testCode && mp.testCode.toUpperCase() === cp.testCode.toUpperCase())
+      )
+  );
 
-    const matchesCategory = 
+  let activePapers: Paper[] = [];
+  if (paperScope === "my") {
+    activePapers = myPapers;
+  } else if (paperScope === "community") {
+    activePapers = communityOnlyPapers;
+  } else {
+    activePapers = [...myPapers, ...communityOnlyPapers];
+  }
+
+  const filteredPapers = activePapers.filter((paper) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      paper.title.toLowerCase().includes(term) ||
+      (paper.subject && paper.subject.toLowerCase().includes(term)) ||
+      (paper.category && paper.category.toLowerCase().includes(term)) ||
+      (paper.userName && paper.userName.toLowerCase().includes(term)) ||
+      (paper.testCode && paper.testCode.toLowerCase().includes(term));
+
+    const matchesCategory =
       selectedCategory === "all" || paper.category === selectedCategory;
 
     return matchesSearch && matchesCategory;
   });
 
-  const totalQuestions = papers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
-  const categories = ["all", ...Array.from(new Set(papers.map(p => p.category).filter(Boolean)))];
+  const totalQuestions = myPapers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
+  const categories = [
+    "all",
+    ...Array.from(new Set(activePapers.map((p) => p.category).filter(Boolean))),
+  ];
 
-  const handleDelete = async (paperId: string, e: React.MouseEvent) => {
+  const handleDelete = async (paper: Paper, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("શું તમે ખરેખર આ પ્રશ્નપત્ર ડિલીટ કરવા માંગો છો? આ પ્રક્રિયા પાછી ખેંચી શકાશે નહીં.")) {
-      setDeletingId(paperId);
-      await deletePaper(paperId);
-      setDeletingId(null);
+    if (
+      confirm(
+        `શું તમે ખરેખર "${paper.title}" પ્રશ્નપત્ર ડિલીટ કરવા માંગો છો? આ પ્રક્રિયા પાછી ખેંચી શકાશે નહીં.`
+      )
+    ) {
+      setDeletingId(paper.id);
+      try {
+        await deletePaper(paper.id, paper.testCode);
+        setCommunityPapers((prev) =>
+          prev.filter(
+            (p) =>
+              p.id !== paper.id &&
+              (!paper.testCode ||
+                p.testCode?.toUpperCase() !== paper.testCode.toUpperCase())
+          )
+        );
+      } catch (err: any) {
+        alert(err?.message || "પેપર ડિલીટ કરવામાં ક્ષતિ થઈ.");
+      } finally {
+        setDeletingId(null);
+      }
     }
   };
 
@@ -292,6 +370,87 @@ export const PaperList: React.FC<PaperListProps> = ({
         <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-white/5 rounded-full blur-2xl pointer-events-none"></div>
       </div>
 
+      {/* Scope Selector: My Papers vs Community Tests */}
+      <div className="flex items-center justify-between border-b border-slate-200/90 pb-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto max-w-full">
+          <button
+            onClick={() => setPaperScope("my")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              paperScope === "my"
+                ? "bg-white text-brand-700 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>મારા પેપર્સ</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                paperScope === "my"
+                  ? "bg-brand-50 text-brand-700"
+                  : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              {myPapers.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setPaperScope("community")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              paperScope === "community"
+                ? "bg-white text-indigo-700 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-indigo-600" />
+            <span>કમ્યુનિટી ટેસ્ટ્સ</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                paperScope === "community"
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              {communityOnlyPapers.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setPaperScope("all")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              paperScope === "all"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5 text-slate-600" />
+            <span>બધા</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                paperScope === "all"
+                  ? "bg-slate-200 text-slate-900"
+                  : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              {myPapers.length + communityOnlyPapers.length}
+            </span>
+          </button>
+        </div>
+
+        <button
+          onClick={loadCommunity}
+          disabled={loadingCommunity}
+          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors flex-shrink-0"
+          title="કમ્યુનિટી પેપર્સ રિફ્રેશ કરો"
+        >
+          <RefreshCw
+            className={`w-3.5 h-3.5 ${
+              loadingCommunity ? "animate-spin text-brand-600" : ""
+            }`}
+          />
+        </button>
+      </div>
+
       {/* Search & Category Filter Bar */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -315,41 +474,43 @@ export const PaperList: React.FC<PaperListProps> = ({
           </button>
         </div>
 
-        {/* Import / sample quick actions */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
-            title="અગાઉ એક્સપોર્ટ કરેલી JSON ફાઈલ ઈમ્પોર્ટ કરો"
-          >
-            {importing ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
-            ) : (
-              <Upload className="w-3.5 h-3.5 text-brand-600" />
-            )}
-            <span>JSON ઈમ્પોર્ટ</span>
-          </button>
+        {/* Import / sample quick actions (shown in My Papers view) */}
+        {paperScope !== "community" && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
+              title="અગાઉ એક્સપોર્ટ કરેલી JSON ફાઈલ ઈમ્પોર્ટ કરો"
+            >
+              {importing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
+              ) : (
+                <Upload className="w-3.5 h-3.5 text-brand-600" />
+              )}
+              <span>JSON ઈમ્પોર્ટ</span>
+            </button>
 
-          <button
-            onClick={handleLoadSample}
-            disabled={importing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-800 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
-            title="25 GSRTC પ્રશ્નોનો તૈયાર નમૂનો ઉમેરો"
-          >
-            <FileJson className="w-3.5 h-3.5 text-emerald-600" />
-            <span>GSRTC નમૂનો લોડ કરો</span>
-          </button>
+            <button
+              onClick={handleLoadSample}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-800 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
+              title="25 GSRTC પ્રશ્નોનો તૈયાર નમૂનો ઉમેરો"
+            >
+              <FileJson className="w-3.5 h-3.5 text-emerald-600" />
+              <span>GSRTC નમૂનો લોડ કરો</span>
+            </button>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            multiple
-            className="hidden"
-            onChange={handleImportFiles}
-          />
-        </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              multiple
+              className="hidden"
+              onChange={handleImportFiles}
+            />
+          </div>
+        )}
 
         {importMsg && (
           <div
@@ -394,14 +555,20 @@ export const PaperList: React.FC<PaperListProps> = ({
             <BookOpen className="w-8 h-8" />
           </div>
           <h3 className="font-bold text-base text-slate-800">
-            {papers.length === 0 ? "હજુ સુધી કોઈ પેપર બનાવ્યું નથી" : "કોઈ મેળ ખાતું પેપર મળ્યું નથી"}
+            {paperScope === "community"
+              ? "હજુ સુધી અન્ય શિક્ષક દ્વારા કોઈ જાહેર ટેસ્ટ બનાવવામાં આવ્યો નથી"
+              : myPapers.length === 0
+              ? "હજુ સુધી કોઈ પેપર બનાવ્યું નથી"
+              : "કોઈ મેળ ખાતું પેપર મળ્યું નથી"}
           </h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
-            {papers.length === 0
+            {paperScope === "community"
+              ? "તમે નવું પેપર બનાવીને ટેલિગ્રામ કોડ જનરેટ કરી શકો છો, જેથી અન્ય વિદ્યાર્થીઓ પણ તેનો ટેસ્ટ આપી શકે."
+              : myPapers.length === 0
               ? "તમારું પ્રથમ પ્રશ્નપત્ર બનાવો અને તેમાં પ્રશ્નો ટાઈપ કરો અથવા કોપી-પેસ્ટ કરો."
               : "બીજું કંઈક શોધો અથવા ફિલ્ટર બદલો."}
           </p>
-          {papers.length === 0 && (
+          {paperScope !== "community" && myPapers.length === 0 && (
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 onClick={onOpenCreate}
@@ -428,6 +595,17 @@ export const PaperList: React.FC<PaperListProps> = ({
             const target = paper.targetQuestions || 50;
             const percent = Math.min(100, Math.round((count / target) * 100));
 
+            const isOwner = Boolean(
+              user &&
+                (paper.userId === user.id ||
+                  (paper.creatorPhone &&
+                    user.phoneNumber &&
+                    paper.creatorPhone === user.phoneNumber) ||
+                  (!paper.userId &&
+                    !paper.creatorPhone &&
+                    myPapers.some((p) => p.id === paper.id)))
+            );
+
             return (
               <div
                 key={paper.id}
@@ -440,8 +618,9 @@ export const PaperList: React.FC<PaperListProps> = ({
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
                         {paper.category || "General"}
                       </span>
+
                       {paper.testCode && (
-                        <span 
+                        <span
                           onClick={(e) => handleCopyCode(paper, e)}
                           className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-100 flex items-center gap-1 shadow-sm cursor-pointer"
                           title="કમાન્ડ કોપી કરવા ક્લિક કરો (/quiz CODE)"
@@ -455,43 +634,60 @@ export const PaperList: React.FC<PaperListProps> = ({
                           )}
                         </span>
                       )}
+
+                      {!isOwner && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>વાંચન મોડ (Read-Only)</span>
+                        </span>
+                      )}
                     </div>
-                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1 flex-shrink-0">
                       <Clock className="w-3 h-3" />
                       {formatDate(paper.updatedAt)}
                     </span>
                   </div>
 
-                  <h4 className="font-bold text-slate-900 text-base leading-snug group-hover:text-brand-600 transition-colors">
+                  <h4 className="font-bold text-slate-900 text-base leading-snug group-hover:text-brand-600 transition-colors line-clamp-2">
                     {paper.title}
                   </h4>
-                  {paper.subject && (
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      વિષય: {paper.subject}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-2 text-xs text-slate-500 font-medium mt-0.5">
+                    {paper.subject && <span>વિષય: {paper.subject}</span>}
+                    {paper.userName && (
+                      <>
+                        <span>•</span>
+                        <span className="text-slate-600 font-semibold truncate">
+                          બનાવનાર: {paper.userName}
+                        </span>
+                      </>
+                    )}
+                  </div>
 
                   <div className="mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="font-semibold text-slate-700 flex items-center gap-1">
                         <Layers className="w-3.5 h-3.5 text-brand-600" />
-                        પ્રશ્નો: {count} / {target}
+                        પ્રશ્નો: {count} {isOwner ? `/ ${target}` : "MCQs"}
                       </span>
-                      <span className="font-bold text-brand-600">{percent}%</span>
+                      {isOwner && (
+                        <span className="font-bold text-brand-600">{percent}%</span>
+                      )}
                     </div>
-                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-brand-500 to-indigo-600 h-full rounded-full transition-all duration-300"
-                        style={{ width: `${percent}%` }}
-                      ></div>
-                    </div>
+                    {isOwner && (
+                      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-brand-500 to-indigo-600 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${percent}%` }}
+                        ></div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Bottom Actions */}
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
                   <div className="flex items-center gap-1">
-                    {/* Take Test */}
+                    {/* Take Test (Available for all) */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -501,7 +697,7 @@ export const PaperList: React.FC<PaperListProps> = ({
                       title="ટેસ્ટ મોડ શરૂ કરો"
                     >
                       <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>ટેસ્ટ</span>
+                      <span>ટેસ્ટ આપો</span>
                     </button>
 
                     {/* View Leaderboard Results */}
@@ -544,6 +740,7 @@ export const PaperList: React.FC<PaperListProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1">
+                    {/* View / Edit Button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -551,26 +748,43 @@ export const PaperList: React.FC<PaperListProps> = ({
                       }}
                       className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 hover:bg-brand-100 font-bold text-xs border border-brand-200 transition-colors"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>એડિટ</span>
+                      {isOwner ? (
+                        <>
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>એડિટ</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>જોવો</span>
+                        </>
+                      )}
                     </button>
 
+                    {/* Duplicate / Clone to library */}
                     <button
                       onClick={(e) => handleDuplicatePaper(paper, e)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                      title="આ પેપરની કોપી બનાવો (Duplicate)"
+                      title={
+                        isOwner
+                          ? "આ પેપરની કોપી બનાવો (Duplicate)"
+                          : "તમારી લાઇબ્રેરીમાં નકલ કરો (Clone to My Library)"
+                      }
                     >
                       <CopyPlus className="w-3.5 h-3.5" />
                     </button>
 
-                    <button
-                      onClick={(e) => handleDelete(paper.id, e)}
-                      disabled={deletingId === paper.id}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      title="Delete Paper"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Delete Paper (Owner Only!) */}
+                    {isOwner && (
+                      <button
+                        onClick={(e) => handleDelete(paper, e)}
+                        disabled={deletingId === paper.id}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40"
+                        title="Delete Paper"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

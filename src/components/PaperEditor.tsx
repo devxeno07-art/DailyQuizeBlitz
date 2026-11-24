@@ -2,7 +2,14 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Paper, Question } from "@/types";
-import { savePaper, saveTemporaryDraft, getTemporaryDraft } from "@/lib/storage";
+import { useAuth } from "@/context/AuthContext";
+import { 
+  savePaper, 
+  saveTemporaryDraft, 
+  getTemporaryDraft, 
+  deletePaper, 
+  generateTestCode 
+} from "@/lib/storage";
 import { 
   ArrowLeft, 
   Plus, 
@@ -28,7 +35,9 @@ import {
   Layers,
   Bot,
   Trophy,
-  Clock
+  Clock,
+  Lock,
+  CopyPlus
 } from "lucide-react";
 import { BulkImportModal } from "./BulkImportModal";
 
@@ -39,6 +48,7 @@ interface PaperEditorProps {
   onExport: (paper: Paper) => void;
   onOpenTelegram?: (paper: Paper) => void;
   onOpenLeaderboard?: (paper: Paper) => void;
+  onDeletePaper?: (paperId: string) => void;
 }
 
 export const PaperEditor: React.FC<PaperEditorProps> = ({
@@ -48,12 +58,24 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   onExport,
   onOpenTelegram,
   onOpenLeaderboard,
+  onDeletePaper,
 }) => {
+  const { user } = useAuth();
   const [currentPaper, setCurrentPaper] = useState<Paper>(paper);
   const [questions, setQuestions] = useState<Question[]>(paper.questions || []);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedTestCode, setCopiedTestCode] = useState(false);
-  
+
+  // Check ownership
+  const isOwner = Boolean(
+    user &&
+      (currentPaper.userId === user.id ||
+        (currentPaper.creatorPhone &&
+          user.phoneNumber &&
+          currentPaper.creatorPhone === user.phoneNumber) ||
+        (!currentPaper.userId && !currentPaper.creatorPhone))
+  );
+
   // Editor Form State
   const [isEditingQuestion, setIsEditingQuestion] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -71,9 +93,58 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
   const [lastSaved, setLastSaved] = useState<Date>(new Date());
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
-  const [isCompleted, setIsCompleted] = useState<boolean>(!!paper.isDigitizedCompleted);
+  const [isCompleted, setIsCompleted] = useState<boolean>(
+    !!paper.isDigitizedCompleted
+  );
 
   const formRef = useRef<HTMLDivElement>(null);
+
+  // Delete Entire Paper
+  const handleDeleteEntirePaper = async () => {
+    if (
+      !confirm(
+        `શું તમે ખરેખર "${currentPaper.title}" પ્રશ્નપત્ર અને તેના તમામ ${questions.length} પ્રશ્નો કાયમ માટે ડિલીટ કરવા માંગો છો? આ પ્રક્રિયા પાછી ખેંચી શકાશે નહીં.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deletePaper(currentPaper.id, currentPaper.testCode);
+      onDeletePaper?.(currentPaper.id);
+      onBack();
+    } catch (e: any) {
+      alert(e?.message || "પેપર ડિલીટ કરવામાં ક્ષતિ થઈ.");
+    }
+  };
+
+  // Duplicate to My Library (for non-owners)
+  const handleDuplicateToMyLibrary = async () => {
+    if (!user) return;
+    const newId = `paper_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const now = new Date().toISOString();
+    const newCode = generateTestCode(currentPaper.category || "GSRTC");
+    const cloned: Paper = {
+      ...currentPaper,
+      id: newId,
+      userId: user.id,
+      userName: user.name,
+      creatorPhone: user.phoneNumber,
+      title: `${currentPaper.title} (મારી કોપી)`,
+      testCode: newCode,
+      createdAt: now,
+      updatedAt: now,
+      questions: (currentPaper.questions || []).map((q, idx) => ({
+        ...q,
+        id: `q_${Date.now()}_${idx}`,
+        paperId: newId,
+      })),
+    };
+    await savePaper(cloned);
+    alert("પેપર તમારી લાઇબ્રેરીમાં સફળતાપૂર્વક નકલ થઈ ગયું! હવે તમે તેમાં ફેરફાર કરી શકો છો.");
+    setCurrentPaper(cloned);
+    setQuestions(cloned.questions);
+  };
 
   // Check for unsaved temporary draft on initial mount
   useEffect(() => {
@@ -265,127 +336,197 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   return (
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 space-y-4 pb-28">
       {/* Top Sticky Header */}
-      <div className="sticky top-[57px] z-30 bg-white/95 backdrop-blur-md p-3 sm:p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center space-x-3 w-full sm:w-auto">
-          <button
-            onClick={onBack}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex-shrink-0"
-            title="પાછા જાઓ (Back)"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="truncate flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="font-bold text-slate-900 text-sm sm:text-base truncate">
+      <div className="sticky top-[56px] z-30 bg-white/95 backdrop-blur-md p-3 sm:p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-2.5">
+        {/* Row 1: Back Button + Title + Save Indicator */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <button
+              onClick={onBack}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex-shrink-0"
+              title="પાછા જાઓ (Back)"
+            >
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-bold text-slate-900 text-xs sm:text-base leading-snug line-clamp-1 sm:line-clamp-2">
                 {currentPaper.title}
               </h2>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 flex-shrink-0">
-                {questions.length} MCQs
-              </span>
-              {/* Specific Persistent Test Code */}
-              {currentPaper.testCode && (
-                <div
-                  onClick={() => {
-                    navigator.clipboard.writeText(`/quiz ${currentPaper.testCode}`);
-                    setCopiedTestCode(true);
-                    setTimeout(() => setCopiedTestCode(false), 2000);
-                  }}
-                  className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-300 text-xs font-mono font-bold hover:bg-sky-100 transition-colors shadow-sm"
-                  title="ટેલિગ્રામ કમાન્ડ કોપી કરવા ક્લિક કરો"
-                >
-                  <Bot className="w-3.5 h-3.5 text-sky-600" />
-                  <span>કોડ: {currentPaper.testCode}</span>
-                  {copiedTestCode ? (
-                    <Check className="w-3 h-3 text-emerald-600" />
-                  ) : (
-                    <Copy className="w-3 h-3 text-slate-400" />
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
-              <span>{currentPaper.subject || currentPaper.category}</span>
-              <span>•</span>
-              <div className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200/80 px-2 py-0.5 rounded-lg border border-slate-200" title="કસ્ટમ સમય મર્યાદા (મિનિટ)">
-                <Clock className="w-3 h-3 text-brand-600" />
-                <span className="text-[10px] text-slate-500 font-medium">સમય:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={300}
-                  value={currentPaper.timeLimitMinutes || 60}
-                  onChange={(e) => {
-                    const mins = Math.max(1, Number(e.target.value));
-                    const updated = { ...currentPaper, timeLimitMinutes: mins };
-                    setCurrentPaper(updated);
-                    savePaper(updated);
-                  }}
-                  className="w-10 bg-white border border-slate-300 rounded px-1 py-0.5 text-center font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                />
-                <span className="text-[10px] text-slate-600 font-bold">Min</span>
+              <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-500 font-medium truncate mt-0.5">
+                <span>{currentPaper.subject || currentPaper.category}</span>
+                {currentPaper.userName && (
+                  <>
+                    <span>•</span>
+                    <span className="text-slate-600 font-semibold truncate">
+                      બનાવનાર: {currentPaper.userName}
+                    </span>
+                  </>
+                )}
               </div>
-              <span>•</span>
-              <span className="flex items-center gap-1 font-medium">
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {isOwner && (
+              <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
                 {saveStatus === "saving" ? (
                   <>
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-                    <span className="text-amber-700">સાચવી રહ્યું છે...</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                    <span>સેવ થાય છે...</span>
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    <span className="text-emerald-700">Auto-Saved ✓</span>
+                    <span>Auto-Saved</span>
                   </>
                 )}
               </span>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Top Quick Actions */}
-        <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end flex-wrap">
-          {/* Specific Test Telegram Runner Button */}
-          <button
-            onClick={() => onOpenTelegram?.({ ...currentPaper, questions })}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold text-xs shadow-sm transition-all"
-            title="આ સ્પેસિફિક ટેસ્ટ ટેલિગ્રામ ગ્રૂપમાં રમાડો"
-          >
-            <Bot className="w-3.5 h-3.5" />
-            <span>ટેલિગ્રામ કોડ ({currentPaper.testCode})</span>
-          </button>
+        {/* Row 2: Badges Bar (MCQs, Test Code, Time, Status) */}
+        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+          <span className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-lg bg-brand-50 text-brand-700 border border-brand-200">
+            {questions.length} MCQs
+          </span>
 
-          <button
-            onClick={() => setBulkModalOpen(true)}
-            className="flex-1 sm:flex-initial flex items-center justify-center space-x-1 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs border border-indigo-200 transition-colors"
-          >
-            <ClipboardPaste className="w-3.5 h-3.5" />
-            <span>બલ્ક પેસ્ટ (Paste)</span>
-          </button>
+          {currentPaper.testCode && (
+            <div
+              onClick={() => {
+                navigator.clipboard.writeText(`/quiz ${currentPaper.testCode}`);
+                setCopiedTestCode(true);
+                setTimeout(() => setCopiedTestCode(false), 2000);
+              }}
+              className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-300 text-[11px] sm:text-xs font-mono font-bold hover:bg-sky-100 transition-colors shadow-sm"
+              title="ટેલિગ્રામ કમાન્ડ કોપી કરો"
+            >
+              <Bot className="w-3 h-3 text-sky-600" />
+              <span>કોડ: {currentPaper.testCode}</span>
+              {copiedTestCode ? (
+                <Check className="w-3 h-3 text-emerald-600" />
+              ) : (
+                <Copy className="w-3 h-3 text-slate-400" />
+              )}
+            </div>
+          )}
 
+          <div
+            className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 text-[11px] sm:text-xs"
+            title="સમય મર્યાદા (મિનિટ)"
+          >
+            <Clock className="w-3 h-3 text-brand-600" />
+            <span className="text-slate-500 font-medium">સમય:</span>
+            {isOwner ? (
+              <input
+                type="number"
+                min={1}
+                max={300}
+                value={currentPaper.timeLimitMinutes || 60}
+                onChange={(e) => {
+                  const mins = Math.max(1, Number(e.target.value));
+                  const updated = { ...currentPaper, timeLimitMinutes: mins };
+                  setCurrentPaper(updated);
+                  savePaper(updated);
+                }}
+                className="w-9 bg-white border border-slate-300 rounded px-1 text-center font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            ) : (
+              <span className="font-mono font-bold text-slate-800">
+                {currentPaper.timeLimitMinutes || 60}
+              </span>
+            )}
+            <span className="text-slate-600 font-bold">Min</span>
+          </div>
+
+          {!isOwner && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
+              <Lock className="w-3 h-3 text-amber-600" />
+              <span>વાંચન મોડ (Read-Only)</span>
+            </span>
+          )}
+        </div>
+
+        {/* Read-Only Notice banner if not owner */}
+        {!isOwner && (
+          <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <p className="text-[11px] leading-snug">
+                આ પેપર <strong>{currentPaper.userName || "અન્ય શિક્ષક"}</strong> દ્વારા બનાવવામાં આવેલ છે. તમે આ ટેસ્ટ આપી શકો છો, પરંતુ મૂળ પેપરમાં ફેરફાર કરી શકતા નથી.
+              </p>
+            </div>
+            <button
+              onClick={handleDuplicateToMyLibrary}
+              className="w-full sm:w-auto px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-sm transition-all whitespace-nowrap"
+            >
+              <CopyPlus className="w-3.5 h-3.5" />
+              <span>મારી લાઇબ્રેરીમાં નકલ કરો</span>
+            </button>
+          </div>
+        )}
+
+        {/* Row 3: Action Buttons Bar */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+          {/* 1. Take Test (Primary Emerald Button) */}
           <button
             onClick={() => onTakeTest({ ...currentPaper, questions })}
             disabled={questions.length === 0}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[85px] sm:flex-initial flex items-center justify-center space-x-1 px-3 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
           >
             <PlayCircle className="w-3.5 h-3.5" />
             <span>ટેસ્ટ આપો</span>
           </button>
 
+          {/* 2. Telegram Bot code trigger */}
+          <button
+            onClick={() => onOpenTelegram?.({ ...currentPaper, questions })}
+            className="flex-1 min-w-[85px] sm:flex-initial flex items-center justify-center space-x-1 px-3 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold text-xs shadow-sm transition-all"
+            title="આ ટેસ્ટ ટેલિગ્રામમાં રમાડો"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>ટેલિગ્રામ</span>
+          </button>
+
+          {/* 3. Bulk Paste (Owner Only) */}
+          {isOwner && (
+            <button
+              onClick={() => setBulkModalOpen(true)}
+              className="flex-1 min-w-[80px] sm:flex-initial flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs border border-indigo-200 transition-colors"
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" />
+              <span>બલ્ક પેસ્ટ</span>
+            </button>
+          )}
+
+          {/* 4. Leaderboard / Results */}
           <button
             onClick={() => onOpenLeaderboard?.({ ...currentPaper, questions })}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs border border-amber-200 transition-colors"
-            title="પરિણામ & લીડરબોર્ડ સ્કોર જુઓ"
+            className="flex-1 min-w-[70px] sm:flex-initial flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs border border-amber-200 transition-colors"
+            title="પરિણામ & સ્કોર"
           >
             <Trophy className="w-3.5 h-3.5 text-amber-600" />
             <span>પરિણામ</span>
           </button>
 
+          {/* 5. Delete Entire Paper (Owner Only) */}
+          {isOwner && (
+            <button
+              onClick={handleDeleteEntirePaper}
+              className="flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs border border-rose-200 transition-colors"
+              title="આખું પેપર કાયમ માટે ડિલીટ કરો"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>ડિલીટ</span>
+            </button>
+          )}
+
+          {/* 6. Export / Print */}
           <button
             onClick={() => onExport({ ...currentPaper, questions })}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex-shrink-0"
             title="Export & Print"
           >
-            <Share2 className="w-4 h-4" />
+            <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
       </div>
@@ -672,23 +813,25 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
       {!isEditingQuestion && (
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-2.5 sm:top-3 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="પેપરના પ્રશ્નોમાં શોધો..."
+              placeholder="પેપરના પ્રશ્નોમાં શોધો... (Search MCQs)"
               className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
             />
           </div>
 
-          <button
-            onClick={handleOpenNewQuestion}
-            className="flex items-center space-x-1 px-4 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700 whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4" />
-            <span>નવો પ્રશ્ન ઉમેરો</span>
-          </button>
+          {isOwner && (
+            <button
+              onClick={handleOpenNewQuestion}
+              className="flex items-center space-x-1 px-3.5 py-2 sm:py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" />
+              <span>નવો પ્રશ્ન</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -703,24 +846,28 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
               આ પેપરમાં હજુ કોઈ પ્રશ્ન ડિજિટાઇઝ થયો નથી
             </h4>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
-              તમે જાતે પ્રશ્નો ટાઈપ કરી શકો છો અથવા PDF/WhatsApp માંથી એકસાથે પ્રશ્નો બલ્ક પેસ્ટ કરી શકો છો.
+              {isOwner
+                ? "તમે જાતે પ્રશ્નો ટાઈપ કરી શકો છો અથવા PDF/WhatsApp માંથી એકસાથે પ્રશ્નો બલ્ક પેસ્ટ કરી શકો છો."
+                : "આ પેપરમાં હજુ શિક્ષક દ્વારા પ્રશ્નો ઉમેરવામાં આવ્યા નથી."}
             </p>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                onClick={handleOpenNewQuestion}
-                className="px-4 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700 flex items-center space-x-1"
-              >
-                <Plus className="w-4 h-4" />
-                <span>પ્રશ્ન ટાઈપ કરો</span>
-              </button>
-              <button
-                onClick={() => setBulkModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs hover:bg-indigo-100 flex items-center space-x-1"
-              >
-                <ClipboardPaste className="w-4 h-4" />
-                <span>બલ્ક પેસ્ટ કરો</span>
-              </button>
-            </div>
+            {isOwner && (
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={handleOpenNewQuestion}
+                  className="px-4 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700 flex items-center space-x-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>પ્રશ્ન ટાઈપ કરો</span>
+                </button>
+                <button
+                  onClick={() => setBulkModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs hover:bg-indigo-100 flex items-center space-x-1"
+                >
+                  <ClipboardPaste className="w-4 h-4" />
+                  <span>બલ્ક પેસ્ટ કરો</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           filteredQuestions.map((q, index) => {
@@ -728,7 +875,7 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
             return (
               <div
                 key={q.id || index}
-                className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-shadow space-y-3"
+                className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-shadow space-y-3"
               >
                 {/* Question Header & Order Actions */}
                 <div className="flex items-start justify-between gap-2">
@@ -741,46 +888,48 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
                     </p>
                   </div>
 
-                  {/* Ordering & Actions */}
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => handleMove(index, "up")}
-                      disabled={index === 0}
-                      className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30"
-                      title="Move Up"
-                    >
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleMove(index, "down")}
-                      disabled={index === questions.length - 1}
-                      className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30"
-                      title="Move Down"
-                    >
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDuplicateQuestion(index)}
-                      className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                      title="Duplicate"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleEditQuestion(index)}
-                      className="p-1 rounded text-slate-400 hover:text-brand-600 hover:bg-brand-50"
-                      title="Edit"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteQuestion(index)}
-                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  {/* Ordering & Actions (Owner Only) */}
+                  {isOwner && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => handleMove(index, "up")}
+                        disabled={index === 0}
+                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30"
+                        title="Move Up"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleMove(index, "down")}
+                        disabled={index === questions.length - 1}
+                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30"
+                        title="Move Down"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDuplicateQuestion(index)}
+                        className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                        title="Duplicate"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleEditQuestion(index)}
+                        className="p-1 rounded text-slate-400 hover:text-brand-600 hover:bg-brand-50"
+                        title="Edit"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteQuestion(index)}
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Options List */}
