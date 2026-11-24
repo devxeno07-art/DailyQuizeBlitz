@@ -54,17 +54,13 @@ const getMaxQuestionsPerRun = (): number => {
 };
 
 const MAX_QUESTIONS_PER_RUN = getMaxQuestionsPerRun();
-const POLL_DELAY_MS = Math.max(
-  150,
-  Number(process.env.TELEGRAM_POLL_DELAY_MS || 400)
-);
+// Small grace period after a poll's open_period before the next question is
+// posted. Keeps a short visible gap instead of overlapping two questions.
+const NEXT_POLL_GRACE_MS = 1200;
 
 // ==========================================
 // Small helpers
 // ==========================================
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 const escapeHtml = (value: unknown): string =>
   String(value ?? "")
@@ -361,6 +357,7 @@ export const finalizeDueSessions = async (): Promise<number> => {
   const due = sessions.filter(
     (session) =>
       session.status === "active" &&
+      session.polls.length >= (session.quiz?.questions?.length || 0) &&
       session.finalizeAt &&
       new Date(session.finalizeAt).getTime() <= now &&
       !session.leaderboardSentAt
@@ -376,6 +373,153 @@ export const finalizeDueSessions = async (): Promise<number> => {
     if (ok) finalized += 1;
   }
   return finalized;
+};
+
+const getSessionTimePerQuestion = (
+  session: TelegramQuizSession
+): number =>
+  Math.max(
+    10,
+    Math.min(600, Number(session.quiz?.timePerQuestion) || 30)
+  );
+
+/**
+ * Sends the poll at `index` for a session. The caller is responsible for
+ * persisting the session afterwards only when needed (this helper saves on
+ * success so a crash cannot resend the same question).
+ */
+const sendPollForQuestion = async (
+  ctx: Pick<BotContext, "token" | "chatId">,
+  session: TelegramQuizSession,
+  index: number
+): Promise<{ ok: boolean; error?: string }> => {
+  const question = session.quiz.questions[index];
+  if (!question) {
+    return { ok: false, error: "Question not found" };
+  }
+
+  const prepared = preparePollOptions(question);
+  if (!prepared) {
+    return { ok: false, error: "Question has fewer than 2 valid options" };
+  }
+
+  const total = session.quiz.questions.length;
+  const timePerQuestion = getSessionTimePerQuestion(session);
+  const questionText = truncate(
+    `પ્રશ્ન ${index + 1}/${total}\n${String(question.questionText || "")}`,
+    300
+  );
+
+  const result = await callTelegram(ctx.token, "sendPoll", {
+    chat_id: ctx.chatId,
+    question: questionText,
+    options: prepared.options,
+    type: "quiz",
+    correct_option_id: prepared.correctOptionId,
+    explanation: truncate(question.explanation || "", 200),
+    open_period: timePerQuestion,
+    is_anonymous: false,
+    allows_multiple_answers: false,
+  });
+
+  if (!result.ok || !result.result?.poll?.id) {
+    return {
+      ok: false,
+      error: result.description || "Telegram refused to send a poll",
+    };
+  }
+
+  const sentAt = new Date();
+  session.polls.push({
+    pollId: result.result.poll.id,
+    questionIndex: index,
+    questionId: question.id,
+    correctOptionId: prepared.correctOptionId,
+    chatId: ctx.chatId,
+    messageId: result.result.message_id,
+    sentAt: sentAt.toISOString(),
+  });
+  // The final leaderboard may only go out once this poll's timer has closed.
+  session.finalizeAt = new Date(
+    sentAt.getTime() + timePerQuestion * 1000 + 5000
+  ).toISOString();
+  session.status = "active";
+  await saveSession(session);
+  return { ok: true };
+};
+
+let advanceInProgress = false;
+
+/**
+ * Sequential quiz runner. Called by the polling daemon (every second) and by
+ * the cron tick. Sends the next question only after the previous poll's
+ * open_period has elapsed, so participants never see the whole paper at once.
+ */
+export const advanceQuizSessions = async (): Promise<{
+  sent: number;
+  errors: string[];
+}> => {
+  // The polling daemon and cron tick can overlap; never send two polls for
+  // the same session from two concurrent calls in this process.
+  if (advanceInProgress) return { sent: 0, errors: [] };
+  advanceInProgress = true;
+
+  try {
+    const config = await getServerBotConfig();
+    const token = config.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+    if (!token) return { sent: 0, errors: [] };
+
+    const now = Date.now();
+    const sessions = await getAllSessions();
+    let sent = 0;
+    const errors: string[] = [];
+
+    for (const session of sessions) {
+      if (session.status !== "active") continue;
+      const total = session.quiz?.questions?.length || 0;
+      if (total === 0 || session.polls.length >= total) continue;
+      if (session.polls.length === 0) continue; // first poll is sent at start
+
+      const lastPoll = session.polls[session.polls.length - 1];
+      const lastSentAt = new Date(lastPoll.sentAt).getTime();
+      if (!Number.isFinite(lastSentAt)) continue;
+
+      const dueAt =
+        lastSentAt +
+        getSessionTimePerQuestion(session) * 1000 +
+        NEXT_POLL_GRACE_MS;
+      if (now < dueAt) continue;
+
+      const ctx = { token, chatId: session.chatId };
+      const result = await sendPollForQuestion(
+        ctx,
+        session,
+        session.polls.length
+      );
+
+      if (!result.ok) {
+        session.status = "error";
+        session.error = result.error;
+        await saveSession(session);
+        errors.push(`${session.id}: ${result.error}`);
+        await sendMessage(
+          ctx,
+          `⚠️ <b>પોલ મોકલવામાં ભૂલ આવી.</b>\n` +
+            `પ્રશ્ન #${session.polls.length + 1} પર ટેસ્ટ અટકી ગઈ.\n\n` +
+            `<i>${escapeHtml(result.error || "Unknown error")}</i>\n\n` +
+            `👉 હજુ સુધી મળેલા જવાબોનું પરિણામ: <code>/results ${escapeHtml(
+              session.code
+            )}</code>`
+        );
+        continue;
+      }
+      sent += 1;
+    }
+
+    return { sent, errors };
+  } finally {
+    advanceInProgress = false;
+  }
 };
 
 // ==========================================
@@ -469,7 +613,7 @@ const startQuizSession = async (
       `🔢 <b>કુલ પ્રશ્નો:</b> ${sendable.length}\n` +
       `⏱ <b>સમય:</b> ${session.quiz.timePerQuestion} સેકન્ડ/પ્રશ્ન\n` +
       `👤 <b>શરૂ કરનાર:</b> ${escapeHtml(session.startedBy.name)}\n\n` +
-      `<i>નીચે એક પછી એક પોલ આવશે. દરેક પોલમાં સાચો વિકલ્પ પસંદ કરો. અંતે સાચી લીડરબોર્ડ આપોઆપ મોકલાશે.</i>`
+      `<i>હવે એક સમયે ફક્ત એક જ પ્રશ્ન આવશે. જવાબ આપવા માટે ${session.quiz.timePerQuestion} સેકન્ડ મળશે, પછી આપોઆપ આગલો પ્રશ્ન આવશે.</i>`
   );
 
   if (!introOk) {
@@ -479,69 +623,30 @@ const startQuizSession = async (
     return { ok: false, error: session.error };
   }
 
-  for (let index = 0; index < sendable.length; index++) {
-    const { question, prepared } = sendable[index];
-    const result = await callTelegram(ctx.token, "sendPoll", {
-      chat_id: ctx.chatId,
-      question: truncate(question.questionText, 300),
-      options: prepared.options,
-      type: "quiz",
-      correct_option_id: prepared.correctOptionId,
-      explanation: truncate(question.explanation || "", 200),
-      open_period: Math.max(
-        10,
-        Math.min(600, session.quiz.timePerQuestion || 30)
-      ),
-      is_anonymous: false,
-      allows_multiple_answers: false,
-    });
-
-    if (!result.ok || !result.result?.poll?.id) {
-      session.status = "error";
-      session.error =
-        result.description || "Telegram refused to send a poll";
-      await saveSession(session);
-      await sendMessage(
-        ctx,
-        `⚠️ <b>પોલ મોકલવામાં ભૂલ આવી.</b>\nપ્રશ્ન #${index + 1} પછી ટેસ્ટ અટકી ગઈ.\n\n` +
-          `<i>${escapeHtml(session.error)}</i>\n\n` +
-          `👉 હજુ સુધી મળેલા જવાબોનું પરિણામ: <code>/results ${escapeHtml(
-            quiz.code
-          )}</code>`
-      );
-      return { ok: false, session, error: session.error };
-    }
-
-    session.polls.push({
-      pollId: result.result.poll.id,
-      questionIndex: index,
-      questionId: question.id,
-      correctOptionId: prepared.correctOptionId,
-      chatId: ctx.chatId,
-      messageId: result.result.message_id,
-      sentAt: new Date().toISOString(),
-    });
+  // Only the first question is sent now. advanceQuizSessions() delivers the
+  // remaining questions one by one after each open_period expires.
+  const firstSend = await sendPollForQuestion(ctx, session, 0);
+  if (!firstSend.ok) {
+    session.status = "error";
+    session.error = firstSend.error;
     await saveSession(session);
-
-    if (index < sendable.length - 1) {
-      await sleep(POLL_DELAY_MS);
-    }
+    await sendMessage(
+      ctx,
+      `⚠️ <b>પોલ મોકલવામાં ભૂલ આવી.</b>\n` +
+        `પ્રથમ પ્રશ્ન શરૂ થઈ શક્યો નહીં.\n\n` +
+        `<i>${escapeHtml(firstSend.error || "Unknown error")}</i>`
+    );
+    return { ok: false, session, error: session.error };
   }
-
-  // The last poll closes after open_period; give it a small buffer.
-  session.finalizeAt = new Date(
-    Date.now() + (session.quiz.timePerQuestion || 30) * 1000 + 15000
-  ).toISOString();
-  session.status = "active";
-  await saveSession(session);
 
   await sendMessage(
     ctx,
-    `✅ <b>બધા ${sendable.length} પોલ મોકલાયા!</b>\n\n` +
+    `✅ <b>પ્રથમ પ્રશ્ન મોકલાયો!</b>\n\n` +
       `🔑 ટેસ્ટ કોડ: <code>${escapeHtml(quiz.code)}</code>\n` +
+      `⏱ દર ${session.quiz.timePerQuestion} સેકન્ડે આગલો પ્રશ્ન આવશે.\n` +
       `👉 લાઈવ સ્કોર: <code>/results ${escapeHtml(quiz.code)}</code>\n` +
       `👉 ટેસ્ટ વહેલી પૂરી કરવા: <code>/stop ${escapeHtml(quiz.code)}</code>\n\n` +
-      `<i>છેલ્લા પોલ બંધ થયા પછી અંતિમ લીડરબોર્ડ આપોઆપ મોકલાશે.</i>`
+      `<i>છેલ્લા પ્રશ્નનો સમય પૂરો થયા પછી અંતિમ લીડરબોર્ડ આપોઆપ મોકલાશે.</i>`
   );
 
   return { ok: true, session };

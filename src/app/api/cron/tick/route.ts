@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { finalizeDueSessions } from "@/lib/telegramBotEngine";
+import { advanceQuizSessions, finalizeDueSessions } from "@/lib/telegramBotEngine";
 import { runDueSchedules } from "@/lib/scheduler";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,11 @@ const runTick = async (req: NextRequest) => {
     );
   }
 
+  const advanced = await advanceQuizSessions().catch((err) => {
+    console.warn("[cron] advance failed:", err);
+    return { sent: 0, errors: [err?.message || "advance failed"] };
+  });
+
   const [finalized, schedules] = await Promise.all([
     finalizeDueSessions().catch((err) => {
       console.warn("[cron] finalize failed:", err);
@@ -50,6 +55,8 @@ const runTick = async (req: NextRequest) => {
 
   return NextResponse.json({
     ok: true,
+    advancedPolls: advanced.sent,
+    advanceErrors: advanced.errors,
     finalizedSessions: finalized,
     scheduler: schedules,
     ranAt: new Date().toISOString(),

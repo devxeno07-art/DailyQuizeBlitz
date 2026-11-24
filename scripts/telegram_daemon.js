@@ -119,6 +119,13 @@ async function pollOnce() {
     });
   }
 
+  if (data.advancedPolls > 0) {
+    log(`📨 Sent ${data.advancedPolls} next question poll(s).`);
+  }
+  (data.advanceErrors || []).forEach((error) => {
+    console.warn("[Bot Daemon] Quiz advance warning:", error);
+  });
+
   if (data.finalized > 0) {
     finalizedTotal += data.finalized;
     log(`🏁 Finalized ${data.finalized} quiz session(s), leaderboard sent.`);

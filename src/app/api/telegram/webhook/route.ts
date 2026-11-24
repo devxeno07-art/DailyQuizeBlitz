@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { processTelegramUpdate } from "@/lib/telegramBotEngine";
+import {
+  processTelegramUpdate,
+  advanceQuizSessions,
+} from "@/lib/telegramBotEngine";
 import { getServerBotConfig } from "@/lib/serverStorage";
 import { kvGetJson, kvSetJson, withKeyLock } from "@/lib/kvStore";
 
@@ -78,7 +81,18 @@ export async function POST(req: NextRequest) {
 
     const hostOrigin = req.nextUrl?.origin;
     const result = await processTelegramUpdate(update, hostOrigin);
-    return NextResponse.json({ ok: true, result });
+    // Webhook deployments have no 1-second poll loop, so advance any quiz
+    // whose timer elapsed while this update was being handled. A frequent
+    // external cron tick is still required when nobody is answering.
+    const advanced = await advanceQuizSessions().catch(() => ({
+      sent: 0,
+      errors: [],
+    }));
+    return NextResponse.json({
+      ok: true,
+      result,
+      advancedPolls: advanced.sent,
+    });
   } catch (err: any) {
     console.error("Telegram Webhook Error:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });

@@ -55,7 +55,6 @@ npm run build
 | `TELEGRAM_ADMIN_ID` | એડમિનનો numeric Telegram ID |
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook secret header માટે |
 | `TELEGRAM_POLL_SECRET` | `/api/telegram/poll` માટે daemon secret |
-| `TELEGRAM_POLL_DELAY_MS` | પ્રશ્નો વચ્ચેનો delay (default 400ms) |
 | `TELEGRAM_MAX_QUESTIONS` | એક ટેસ્ટમાં વધુમાં વધુ પ્રશ્નો. `0` = બધા પ્રશ્નો |
 | `CRON_SECRET` | `/api/cron/tick` માટે secret (Vercel Cron / external cron) |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash/Vercel KV REST (recommended on Vercel) |
@@ -106,15 +105,17 @@ curl -X POST https://your-app.vercel.app/api/telegram/setup \
 # .env.local માં TELEGRAM_POLL_SECRET સેટ કરો, પછી:
 npm run bot
 ```
-Daemon દર 1 સેકન્ડે updates ખેંચે છે અને દર મિનિટે scheduler/finalization ચલાવે છે.
+Daemon દર 1 સેકન્ડે updates ખેંચે છે, દર મિનિટે scheduler/finalization ચલાવે છે અને દર સેકન્ડે ચેક કરે છે કે આગલા પ્રશ્નનો સમય થયો છે કે નહીં.
 
 ### 4. ગ્રૂપમાં વપરાતા કમાન્ડ
 | કમાન્ડ | કામ |
 | --- | --- |
-| `/quiz GSRTC-1234` | સેવ થેલી ક્વિઝના Telegram polls શરૂ કરો |
+| `/quiz GSRTC-1234` | ટેસ્ટ શરૂ કરો — પહેલા ફક્ત પ્રથમ પ્રશ્ન આવશે |
 | `/results GSRTC-1234` | લાઈવ લીડરબોર્ડ |
 | `/stop GSRTC-1234` | ટેસ્ટ બંધ કરી અંતિમ લીડરબોર્ડ મોકલો |
 | `/stats` | એડમિન માટે સર્વર આંકડા |
+
+> ⏱ **એક સમયે એક જ પ્રશ્ન:** દરેક પ્રશ્ન `timePerQuestion` સેકન્ડ સુધી ખુલ્લો રહે છે. તેનો સમય પૂરો થયા પછી જ આગલો પ્રશ્ન આવે છે. છેલ્લા પ્રશ્ન પછી લીડરબોર્ડ આપોઆપ મોકલાય છે.
 
 ---
 
@@ -130,10 +131,10 @@ curl "https://your-app.vercel.app/api/cron/tick?secret=$CRON_SECRET"
 
 વિકલ્પો:
 - **Vercel Cron** — `vercel.json` માં daily safety-net ટિક છે. Vercel Hobby પ્લાનમાં વારંવારના cron મર્યાદિત હોય છે; minute-level માટે Pro અથવા external cron વાપરો.
-- **External cron** — [cron-job.org](https://cron-job.org) કે UptimeRobot થી દર 5 મિનિટે ઉપરની URL ping કરો (recommended).
-- **Local daemon** — `npm run bot` (daemon દર મિનિટે tick કરે છે).
+- **External cron** — [cron-job.org](https://cron-job.org) કે UptimeRobot થી ઉપરની URL ping કરો. Sequential quiz માટે દર **15–30 સેકન્ડે** (અથવા ઓછામાં ઓછું દર મિનિટે) ping કરો, નહીં તો આગલો પ્રશ્ન મોડો આવશે.
+- **Local daemon** — `npm run bot` (દર 1 સેકન્ડે poll + advance, દર મિનિટે cron tick). Sequential quiz માટે આ સૌથી સચોટ છે.
 
-Tick finalizeDueSessions() પણ ચલાવે છે, જેથી ટેસ્ટનો સમય પૂરો થતાં જ લીડરબોર્ડ Telegram માં જાય.
+Tick `advanceQuizSessions()` અને `finalizeDueSessions()` બંને ચલાવે છે — એટલે સમય થતાં જ આગલો પ્રશ્ન અને છેલ્લા પ્રશ્ન પછી લીડરબોર્ડ Telegram માં જાય.
 
 ---
 

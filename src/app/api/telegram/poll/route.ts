@@ -3,6 +3,7 @@ import { getServerBotConfig } from "@/lib/serverStorage";
 import {
   processTelegramUpdate,
   finalizeDueSessions,
+  advanceQuizSessions,
 } from "@/lib/telegramBotEngine";
 import { isAdminRequest } from "@/lib/adminAuth";
 import { kvGetJson, kvSetJson, withKeyLock } from "@/lib/kvStore";
@@ -73,8 +74,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Always try to finalize sessions whose timer already elapsed, even when
-  // there are no new Telegram updates waiting.
+  // Deliver the next sequential question when its timer has elapsed, then
+  // finalize any session whose last poll has closed.
+  const advanced = await advanceQuizSessions();
   const finalized = await finalizeDueSessions();
 
   let currentOffset = await getStoredOffset();
@@ -82,7 +84,7 @@ export async function GET(req: NextRequest) {
   try {
     const offsetParam =
       currentOffset > 0 ? `offset=${currentOffset}` : "offset=-10";
-    const url = `https://api.telegram.org/bot${token}/getUpdates?${offsetParam}&timeout=5&limit=20`;
+    const url = `https://api.telegram.org/bot${token}/getUpdates?${offsetParam}&timeout=1&limit=20`;
 
     const res = await fetch(url, { cache: "no-store" });
     const data = await res.json();
@@ -91,6 +93,7 @@ export async function GET(req: NextRequest) {
       console.warn("[Telegram Poll Error]:", data);
       return NextResponse.json({
         ok: false,
+        advancedPolls: advanced.sent,
         finalized,
         error: data.description || "Telegram API error",
       });
@@ -114,6 +117,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      advancedPolls: advanced.sent,
+      advanceErrors: advanced.errors,
       finalized,
       processedCount: processed.length,
       nextOffset: currentOffset,
