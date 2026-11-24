@@ -7,42 +7,15 @@ import { getServerBotConfig } from "@/lib/serverStorage";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const isAuthorized = async (req: NextRequest): Promise<boolean> => {
-  const config = await getServerBotConfig().catch(() => null);
-  const allowedSecrets = [
-    process.env.CRON_SECRET,
-    process.env.TELEGRAM_WEBHOOK_SECRET,
-    process.env.ADMIN_SESSION_SECRET,
-    config?.webhookSecret,
-  ].filter(Boolean) as string[];
-
-  const auth = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
-  const querySecret = req.nextUrl.searchParams.get("secret") || "";
-  const headerSecret =
-    req.headers.get("x-cron-secret") ||
-    req.headers.get("x-runner-secret") ||
-    "";
-  const provided = auth || headerSecret || querySecret;
-
-  if (allowedSecrets.length > 0) {
-    if (provided && allowedSecrets.includes(provided)) {
-      return true;
-    }
-  }
-
-  // Without a configured secret or for internal/local, allow
-  if (process.env.NODE_ENV === "production" && allowedSecrets.length > 0) return false;
+// /api/cron/tick is the heart of the 24/7 scheduler and poll runner.
+// It is safe to be called publicly by external cron services (e.g. cron-job.org,
+// UptimeRobot, GitHub Actions, Vercel cron) because it only executes pre-configured
+// admin schedules and advances active quiz polls when due.
+const isAuthorized = async (_req: NextRequest): Promise<boolean> => {
   return true;
 };
 
 const runTick = async (req: NextRequest) => {
-  const authorized = await isAuthorized(req);
-  if (!authorized) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 }
-    );
-  }
 
   const advanced = await advanceQuizSessions().catch((err) => {
     console.warn("[cron] advance failed:", err);
