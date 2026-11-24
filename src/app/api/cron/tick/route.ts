@@ -2,41 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { advanceQuizSessions, finalizeDueSessions } from "@/lib/telegramBotEngine";
 import { runDueSchedules } from "@/lib/scheduler";
 import { triggerQuizRunner, safeWaitUntil } from "@/lib/quizRunner";
+import { getServerBotConfig } from "@/lib/serverStorage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const isAuthorized = (req: NextRequest): boolean => {
-  const secret =
-    process.env.CRON_SECRET ||
-    process.env.TELEGRAM_WEBHOOK_SECRET ||
-    process.env.ADMIN_SESSION_SECRET ||
-    "";
+const isAuthorized = async (req: NextRequest): Promise<boolean> => {
+  const config = await getServerBotConfig().catch(() => null);
+  const allowedSecrets = [
+    process.env.CRON_SECRET,
+    process.env.TELEGRAM_WEBHOOK_SECRET,
+    process.env.ADMIN_SESSION_SECRET,
+    config?.webhookSecret,
+  ].filter(Boolean) as string[];
 
-  // Vercel Cron automatically sends `Authorization: Bearer <CRON_SECRET>`.
-  const auth = req.headers.get("authorization") || "";
+  const auth = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
   const querySecret = req.nextUrl.searchParams.get("secret") || "";
   const headerSecret =
     req.headers.get("x-cron-secret") ||
     req.headers.get("x-runner-secret") ||
     "";
+  const provided = auth || headerSecret || querySecret;
 
-  if (secret) {
-    return (
-      auth === `Bearer ${secret}` ||
-      querySecret === secret ||
-      headerSecret === secret
-    );
+  if (allowedSecrets.length > 0) {
+    if (provided && allowedSecrets.includes(provided)) {
+      return true;
+    }
   }
 
-  // Without a configured secret, allow local development or default.
-  if (process.env.NODE_ENV === "production") return true;
-  const host = (req.headers.get("host") || "").split(":")[0];
-  return host === "localhost" || host === "127.0.0.1";
+  // Without a configured secret or for internal/local, allow
+  if (process.env.NODE_ENV === "production" && allowedSecrets.length > 0) return false;
+  return true;
 };
 
 const runTick = async (req: NextRequest) => {
-  if (!isAuthorized(req)) {
+  const authorized = await isAuthorized(req);
+  if (!authorized) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 }
