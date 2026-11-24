@@ -266,6 +266,10 @@ export const runDueSchedules = async (
     dispatched: [],
   };
 
+  // Only dispatch if current time is within a 30-minute window of the scheduled time.
+  // This prevents an 08:00 AM test created at night from backfilling and running at 11:00 PM!
+  const MAX_SCHEDULE_TOLERANCE_MINUTES = 30;
+
   for (const schedule of schedules) {
     if (!schedule.isActive) continue;
     const scheduledMinutes = parseScheduledTime(schedule.scheduledTime);
@@ -275,8 +279,34 @@ export const runDueSchedules = async (
       );
       continue;
     }
+
+    // Already ran today? Skip.
     if (schedule.lastRunDay === day) continue;
-    if (minutes < scheduledMinutes) continue;
+
+    // Time difference between now and scheduled time in IST minutes
+    const diff = minutes - scheduledMinutes;
+
+    // If the scheduled time has not arrived yet (diff < 0),
+    // OR if it's more than 30 minutes past the scheduled time (diff > 30), do NOT run!
+    if (diff < 0 || diff > MAX_SCHEDULE_TOLERANCE_MINUTES) {
+      continue;
+    }
+
+    // Safeguard: If the schedule was created today AFTER its scheduled time had already passed,
+    // it was created for tomorrow, not today! Mark today as completed so it runs tomorrow.
+    if (schedule.createdAt) {
+      const { day: createdDay, minutes: createdMinutes } = getIstParts(
+        new Date(schedule.createdAt)
+      );
+      if (
+        createdDay === day &&
+        createdMinutes > scheduledMinutes + MAX_SCHEDULE_TOLERANCE_MINUTES
+      ) {
+        schedule.lastRunDay = day;
+        await saveServerSchedule(schedule);
+        continue;
+      }
+    }
 
     const dispatch = await dispatchSchedule(schedule, { hostOrigin });
     if (dispatch.ok) {
