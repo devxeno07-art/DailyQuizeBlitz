@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { generateTop3Banner } from "./bannerGenerator";
 import {
   TelegramBotConfig,
   TelegramParticipant,
@@ -116,14 +117,56 @@ const sendMessage = async (
   text: string,
   replyMarkup?: any
 ): Promise<boolean> => {
+  let effectiveMarkup = replyMarkup;
+  if (ctx.chatId < 0) {
+    if (replyMarkup?.keyboard) {
+      effectiveMarkup = undefined;
+    } else if (!replyMarkup) {
+      effectiveMarkup = { remove_keyboard: true };
+    }
+  }
+
   const result = await callTelegram(ctx.token, "sendMessage", {
     chat_id: ctx.chatId,
     text,
     parse_mode: "HTML",
-    reply_markup: replyMarkup,
+    reply_markup: effectiveMarkup,
     disable_web_page_preview: true,
   });
   return !!result.ok;
+};
+
+const sendPhoto = async (
+  ctx: Pick<BotContext, "token" | "chatId">,
+  photoBuffer: Buffer,
+  caption?: string
+): Promise<boolean> => {
+  try {
+    const formData = new FormData();
+    formData.append("chat_id", String(ctx.chatId));
+    formData.append(
+      "photo",
+      new Blob([new Uint8Array(photoBuffer)], { type: "image/png" }),
+      "top3_banner.png"
+    );
+    if (caption) {
+      formData.append("caption", caption);
+      formData.append("parse_mode", "HTML");
+    }
+
+    const res = await fetch(`https://api.telegram.org/bot${ctx.token}/sendPhoto`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      console.warn("[telegram] sendPhoto failed:", data.description || data);
+    }
+    return !!data.ok;
+  } catch (err: any) {
+    console.warn("[telegram] sendPhoto network error:", err?.message || err);
+    return false;
+  }
 };
 
 const preparePollOptions = (question: any): PollPreparation | null => {
@@ -156,6 +199,27 @@ const preparePollOptions = (question: any): PollPreparation | null => {
   if (correctOptionId < 0) correctOptionId = 0;
 
   return { options, correctOptionId };
+};
+
+export const formatPollQuestion = (
+  rawText: unknown,
+  index: number,
+  total: number
+): string => {
+  const text = String(rawText ?? "").trim();
+  // Strip pre-existing question numbering (e.g., "1.", "59.", "Q1.", "પ્રશ્ન 1.", "[59/60]", "(1)")
+  // while preserving genuine question content like dates/ranges ("1960 માં", "1947-48 માં", "5-10 વર્ષ"), decimals ("3.14"), and times ("10:30")
+  const cleaned = text
+    .replace(
+      /^(?:(?:Q(?:uestion)?|પ્રશ્ન)\.?\s*[\d૦-૯]+(?:\s*[\/\\]\s*[\d૦-૯]+)?|\[[\d૦-૯]+(?:\s*[\/\\]\s*[\d૦-૯]+)?\]|\([\d૦-૯]+(?:\s*[\/\\]\s*[\d૦-૯]+)?\)|[\d૦-૯]{1,4}\s*[\.\:\-\)](?![\d૦-૯]))[\.\:\-\s]*/i,
+      ""
+    )
+    .trim();
+  const body = cleaned || text;
+  const formatted = body
+    ? `[${index + 1}/${total}] ${body}`
+    : `[${index + 1}/${total}]`;
+  return truncate(formatted, 300);
 };
 
 const createMiniAppButton = (ctx: BotContext, label: string, path = "") => {
@@ -329,13 +393,147 @@ const buildLeaderboardText = (
   return message;
 };
 
+const sendLeaderboardTable = async (
+  ctx: Pick<BotContext, "token" | "chatId">,
+  session: TelegramQuizSession,
+  final: boolean
+): Promise<boolean> => {
+  const participants = getSortedParticipants(session);
+  const totalQuestions = session.quiz.questions.length;
+
+  if (participants.length > 0) {
+    const shown = participants.slice(0, 30);
+    const tableCells = [
+      [
+        { text: "ક્રમ", is_header: true, align: "center" },
+        { text: "વિદ્યાર્થી", is_header: true, align: "left" },
+        { text: "સ્કોર", is_header: true, align: "center" },
+        { text: "ખોટા", is_header: true, align: "center" },
+        { text: "%", is_header: true, align: "center" },
+        { text: "ગ્રેડ", is_header: true, align: "center" },
+      ],
+      ...shown.map((p, idx) => {
+        const pct =
+          totalQuestions > 0
+            ? ((p.score / totalQuestions) * 100).toFixed(1)
+            : "0.0";
+        return [
+          { text: String(idx + 1), align: "center" },
+          { text: truncate(p.name, 16), align: "left" },
+          { text: `${p.score}/${totalQuestions}`, align: "center" },
+          { text: String(p.wrong), align: "center" },
+          { text: `${pct}%`, align: "center" },
+          { text: calculateGrade(Number(pct)), align: "center" },
+        ];
+      }),
+    ];
+
+    const richRes = await callTelegram(ctx.token, "sendRichMessage", {
+      chat_id: ctx.chatId,
+      rich_message: {
+        blocks: [
+          {
+            type: "table",
+            is_bordered: true,
+            is_striped: true,
+            cells: tableCells,
+          },
+        ],
+      },
+    });
+
+    if (richRes.ok) {
+      return true;
+    }
+  }
+
+  const text = buildLeaderboardText(session, final);
+  return sendMessage(ctx, text);
+};
+
+export const getTelegramUserAvatar = async (
+  token: string,
+  userId: string | number
+): Promise<string | undefined> => {
+  try {
+    const photosRes = await callTelegram(token, "getUserProfilePhotos", {
+      user_id: userId,
+      limit: 1,
+    });
+    if (!photosRes.ok || !photosRes.result?.photos?.length) return undefined;
+    const photoSizes = photosRes.result.photos[0];
+    if (!photoSizes || photoSizes.length === 0) return undefined;
+    const chosen = photoSizes[Math.min(1, photoSizes.length - 1)];
+    const fileRes = await callTelegram(token, "getFile", {
+      file_id: chosen.file_id,
+    });
+    if (!fileRes.ok || !fileRes.result?.file_path) return undefined;
+    const fileUrl = `https://api.telegram.org/file/bot${token}/${fileRes.result.file_path}`;
+    const imgRes = await fetch(fileUrl);
+    if (!imgRes.ok) return undefined;
+    const ab = await imgRes.arrayBuffer();
+    const base64 = Buffer.from(ab).toString("base64");
+    const mime = fileRes.result.file_path.endsWith(".png")
+      ? "image/png"
+      : "image/jpeg";
+    return `data:${mime};base64,${base64}`;
+  } catch {
+    return undefined;
+  }
+};
+
 const sendLeaderboard = async (
   ctx: Pick<BotContext, "token" | "chatId">,
   session: TelegramQuizSession,
   final: boolean
 ): Promise<boolean> => {
-  const text = buildLeaderboardText(session, final);
-  const ok = await sendMessage(ctx, text);
+  const participants = getSortedParticipants(session);
+
+  // When final === true (quiz complete), notify users immediately that results are calculating
+  if (final) {
+    await sendMessage(
+      ctx,
+      `⏳ <b>ટેસ્ટ પૂર્ણ થઈ! પરિણામ ગણાઈ રહ્યું છે...</b>\n\n` +
+        `📊 <i>બધા વિદ્યાર્થીઓના સ્કોર, ટકાવારી અને ટોપ-૩ લીડરબોર્ડ બેનર તૈયાર થઈ રહ્યું છે, કૃપા કરીને થોડી ક્ષણો રાહ જુઓ...</i> ⏳`
+    );
+  }
+
+  // When final === true (quiz complete), generate and send the HD Top 3 Banner photo with user avatars!
+  if (final && participants.length > 0) {
+    try {
+      const config = await getServerBotConfig();
+      const botHandle = config.botUsername || "databasehandlerbot";
+
+      // Fetch profile avatars for top 3 participants in parallel
+      const top3 = participants.slice(0, 3);
+      const avatarUrls: Record<string, string> = {};
+      await Promise.all(
+        top3.map(async (p) => {
+          const avatar = await getTelegramUserAvatar(ctx.token, p.userId);
+          if (avatar) {
+            avatarUrls[p.userId] = avatar;
+          }
+        })
+      );
+
+      const bannerBuffer = await generateTop3Banner(
+        session,
+        botHandle,
+        avatarUrls
+      );
+      if (bannerBuffer) {
+        await sendPhoto(
+          ctx,
+          bannerBuffer,
+          `🏆 <b>${escapeHtml(session.quiz.title)}</b>\n🎉 <i>અંતિમ પરિણામ અને ટોપ ૩ વિજેતાઓ!</i>`
+        );
+      }
+    } catch (bannerErr) {
+      console.warn("[telegram] Failed to generate/send Top 3 banner:", bannerErr);
+    }
+  }
+
+  const ok = await sendLeaderboardTable(ctx, session, final);
   // Only a FINAL leaderboard marks the session as done. Live /results calls
   // must not set leaderboardSentAt, otherwise finalizeDueSessions() would
   // skip the automatic final leaderboard later.
@@ -405,10 +603,7 @@ const sendPollForQuestion = async (
 
   const total = session.quiz.questions.length;
   const timePerQuestion = getSessionTimePerQuestion(session);
-  const questionText = truncate(
-    `પ્રશ્ન ${index + 1}/${total}\n${String(question.questionText || "")}`,
-    300
-  );
+  const questionText = formatPollQuestion(question.questionText, index, total);
 
   const result = await callTelegram(ctx.token, "sendPoll", {
     chat_id: ctx.chatId,
@@ -613,7 +808,7 @@ const startQuizSession = async (
       `🔢 <b>કુલ પ્રશ્નો:</b> ${sendable.length}\n` +
       `⏱ <b>સમય:</b> ${session.quiz.timePerQuestion} સેકન્ડ/પ્રશ્ન\n` +
       `👤 <b>શરૂ કરનાર:</b> ${escapeHtml(session.startedBy.name)}\n\n` +
-      `<i>હવે એક સમયે ફક્ત એક જ પ્રશ્ન આવશે. જવાબ આપવા માટે ${session.quiz.timePerQuestion} સેકન્ડ મળશે, પછી આપોઆપ આગલો પ્રશ્ન આવશે.</i>`
+      `⏳ <b>તૈયાર થઈ જાઓ! પ્રથમ પ્રશ્ન ૩... ૨... ૧... માં આવી રહ્યો છે!</b> 🚀`
   );
 
   if (!introOk) {
@@ -622,6 +817,9 @@ const startQuizSession = async (
     await saveSession(session);
     return { ok: false, error: session.error };
   }
+
+  // 2.5-second countdown pause before first poll so participants are ready
+  await new Promise((resolve) => setTimeout(resolve, 2500));
 
   // Only the first question is sent now. advanceQuizSessions() delivers the
   // remaining questions one by one after each open_period expires.
@@ -639,16 +837,6 @@ const startQuizSession = async (
     return { ok: false, session, error: session.error };
   }
 
-  await sendMessage(
-    ctx,
-    `✅ <b>પ્રથમ પ્રશ્ન મોકલાયો!</b>\n\n` +
-      `🔑 ટેસ્ટ કોડ: <code>${escapeHtml(quiz.code)}</code>\n` +
-      `⏱ દર ${session.quiz.timePerQuestion} સેકન્ડે આગલો પ્રશ્ન આવશે.\n` +
-      `👉 લાઈવ સ્કોર: <code>/results ${escapeHtml(quiz.code)}</code>\n` +
-      `👉 ટેસ્ટ વહેલી પૂરી કરવા: <code>/stop ${escapeHtml(quiz.code)}</code>\n\n` +
-      `<i>છેલ્લા પ્રશ્નનો સમય પૂરો થયા પછી અંતિમ લીડરબોર્ડ આપોઆપ મોકલાશે.</i>`
-  );
-
   return { ok: true, session };
 };
 
@@ -664,16 +852,23 @@ const handlePollAnswer = async (
     return { handled: false };
   }
 
-  const session = await findSessionByPollId(pollAnswer.poll_id);
-  if (!session) return { handled: false };
+  const targetPollId = String(pollAnswer.poll_id || "").trim();
+  const session = await findSessionByPollId(targetPollId);
+  if (!session) {
+    console.warn(`[telegram] No session found for poll_id: ${targetPollId}`);
+    return { handled: false };
+  }
 
   // Once a final leaderboard was sent, don't mutate historical results.
   if (session.status === "completed" || session.status === "stopped") {
     return { handled: true, action: "late_poll_answer_ignored" };
   }
 
-  const poll = session.polls.find((p) => p.pollId === pollAnswer.poll_id);
-  if (!poll) return { handled: false };
+  const poll = session.polls.find((p) => String(p.pollId).trim() === targetPollId);
+  if (!poll) {
+    console.warn(`[telegram] Poll ${targetPollId} not in session ${session.code} polls list`);
+    return { handled: false };
+  }
 
   const userId = String(pollAnswer.user.id);
   const now = new Date().toISOString();
@@ -1097,6 +1292,17 @@ export const processTelegramUpdate = async (
     if (deepLinkedCode) {
       cleanText = `/quiz ${deepLinkedCode}`;
     } else {
+      if (ctx.chatId < 0) {
+        await sendMessage(
+          ctx,
+          `👋 <b>નમસ્તે! મોક ટેસ્ટ બોટ ગ્રૂપમાં સક્રિય છે!</b> 🎯\n\n` +
+            `👉 ગ્રૂપમાં ટેસ્ટ શરૂ કરવા: <code>/quiz &lt;CODE&gt;</code>\n` +
+            `👉 લાઈવ પરિણામ જોવા: <code>/results</code>\n` +
+            `👉 નવો ટેસ્ટ બનાવવા અને પેપર સેટ કરવા મને પ્રાઇવેટ ચેટમાં <code>/start</code> મોકલો.`
+        );
+        return { handled: true, action: "start_group" };
+      }
+
       await sendMessage(
         ctx,
         `👋 <b>નમસ્તે! MCQ Master Mock Test Bot માં આપનું સ્વાગત છે!</b> 🎯\n\n` +
@@ -1126,7 +1332,7 @@ export const processTelegramUpdate = async (
         `👉 <code>/stop &lt;CODE&gt;</code> - ટેસ્ટ પૂરી કરો (admin)\n` +
         `👉 <code>/miniapp</code> - મોબાઇલ Mini App ખોલો\n` +
         `👉 <code>/admin</code> - એડમિન કંટ્રોલ પેનલ\n\n` +
-        `<i>ઉદાહરણ:</i> <code>/quiz GSRTC-1001</code>`
+        `<i>ઉદાહરણ:</i> <code>/quiz TEST-1001</code>`
     );
     return { handled: true, action: "help" };
   }

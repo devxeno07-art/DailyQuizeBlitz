@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { 
   FileText, 
@@ -13,7 +14,8 @@ import {
   Database,
   Menu,
   X,
-  Bot
+  Bot,
+  Printer
 } from "lucide-react";
 import { getStoredFirebaseConfig } from "@/lib/firebase";
 
@@ -51,6 +53,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenTelegram }) => {
 
         {/* Desktop Navigation & Actions */}
         <div className="hidden sm:flex items-center space-x-2.5">
+          {/* PDF Studio Button */}
+          <Link
+            href="/pdf-studio"
+            className="flex items-center space-x-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-sm transition-all"
+            title="Branded MCQ to PDF Studio"
+          >
+            <Printer className="w-4 h-4" />
+            <span>PDF Studio</span>
+          </Link>
+
           {/* Telegram Bot Quick Trigger */}
           <button
             onClick={onOpenTelegram}
@@ -152,6 +164,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenTelegram }) => {
           )}
 
           <div className="flex flex-col space-y-2 pt-1">
+            <Link
+              href="/pdf-studio"
+              onClick={() => setMobileMenuOpen(false)}
+              className="w-full flex items-center justify-center space-x-2 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs shadow-md"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Branded PDF Studio (A4 પ્રશ્નપત્ર)</span>
+            </Link>
+
             <button
               onClick={() => {
                 setMobileMenuOpen(false);

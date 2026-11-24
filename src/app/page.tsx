@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { Paper } from "@/types";
 import { Header } from "@/components/Header";
@@ -14,7 +15,7 @@ import { PrintableView } from "@/components/PrintableView";
 import { SourcePapersLibrary } from "@/components/SourcePapersLibrary";
 import { TelegramBotModal } from "@/components/TelegramBotModal";
 import { LeaderboardModal } from "@/components/LeaderboardModal";
-import { FileDown, BookOpen, Plus, Bot } from "lucide-react";
+import { FileDown, BookOpen, Plus, Bot, Printer } from "lucide-react";
 
 export default function Home() {
   const { user, papers, isMounted } = useAuth();
@@ -148,6 +149,14 @@ export default function Home() {
               </div>
 
               <div className="flex items-center gap-1.5 justify-end">
+                <Link
+                  href="/pdf-studio"
+                  className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>PDF Studio</span>
+                </Link>
+
                 <button
                   onClick={() => handleOpenTelegram()}
                   className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-bold text-xs transition-colors"

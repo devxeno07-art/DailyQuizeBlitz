@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { Paper } from "@/types";
 import { formatPaperForWhatsApp, exportPaperAsJSON, exportPaperAsCSV } from "@/lib/export";
 import { 
@@ -122,15 +123,25 @@ export const ExportModal: React.FC<ExportModalProps> = ({ paper, isOpen, onClose
               <span>A4 સાઇઝ પ્રિન્ટ / PDF ડાઉનલોડ</span>
             </div>
             <p className="text-xs text-slate-600">
-              પરીક્ષા હોલ માટે સત્તાવાર પ્રશ્નપત્ર ફોર્મેટમાં પ્રિન્ટ કરો (તમામ બટનો આપોઆપ છુપાઈ જશે).
+              પરીક્ષા હોલ માટે સત્તાવાર પ્રશ્નપત્ર ફોર્મેટમાં પ્રિન્ટ કરો અથવા બ્રાન્ડેડ સ્ટુડિયોમાં વોટરમાર્ક સાથે PDF બનાવો.
             </p>
-            <button
-              onClick={handlePrint}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>પ્રશ્નપત્ર પ્રિન્ટ કરો (Print to PDF)</span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Link
+                href={`/pdf-studio?paperId=${paper.id}`}
+                className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors text-center"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Branded PDF Studio</span>
+              </Link>
+
+              <button
+                onClick={handlePrint}
+                className="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Standard Print</span>
+              </button>
+            </div>
           </div>
 
           {/* Option 3: File Downloads (CSV / JSON) */}

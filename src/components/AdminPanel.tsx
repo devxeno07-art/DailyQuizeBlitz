@@ -62,7 +62,8 @@ import {
   Radio,
   LogOut,
   Webhook,
-  Server
+  Server,
+  Key
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -85,7 +86,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "digitization" | "scheduler" | "bot_config">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "digitization" | "scheduler" | "bot_config" | "database">("users");
+
+  // Supabase State
+  const [supabaseData, setSupabaseData] = useState<{
+    connected?: boolean;
+    tableExists?: boolean;
+    hasPinInSupabase?: boolean;
+    supabaseUrl?: string;
+    latencyMs?: number;
+    error?: string;
+    setupSql?: string;
+    currentPin?: string | null;
+  } | null>(null);
+  const [loadingSupabase, setLoadingSupabase] = useState(false);
+  const [newSupabasePin, setNewSupabasePin] = useState("");
+  const [savingSupabasePin, setSavingSupabasePin] = useState(false);
+  const [supabasePinSuccess, setSupabasePinSuccess] = useState<string | null>(null);
+  const [supabasePinError, setSupabasePinError] = useState<string | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  const fetchSupabaseStatus = async () => {
+    setLoadingSupabase(true);
+    setSupabasePinSuccess(null);
+    setSupabasePinError(null);
+    try {
+      const res = await fetch("/api/admin/supabase-status", { cache: "no-store" });
+      const data = await res.json();
+      setSupabaseData(data);
+    } catch (err: any) {
+      setSupabaseData({ connected: false, error: err?.message || "Failed to reach server" });
+    } finally {
+      setLoadingSupabase(false);
+    }
+  };
+
+  const handleSaveSupabasePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSupabasePin.trim()) return;
+    setSavingSupabasePin(true);
+    setSupabasePinSuccess(null);
+    setSupabasePinError(null);
+    try {
+      const res = await fetch("/api/admin/supabase-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: newSupabasePin.trim() }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSupabasePinSuccess("નવો Admin Password સફળતાપૂર્વક Supabase માં સેવ થઈ ગયો છે!");
+        setNewSupabasePin("");
+        fetchSupabaseStatus();
+      } else {
+        setSupabasePinError(data.error || "Supabase માં પાસવર્ડ સેવ થઈ શક્યો નહીં.");
+      }
+    } catch (err: any) {
+      setSupabasePinError(err?.message || "Network error");
+    } finally {
+      setSavingSupabasePin(false);
+    }
+  };
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [allPapers, setAllPapers] = useState<Paper[]>([]);
@@ -706,10 +767,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <Lock className="w-7 h-7" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-lg">Admin સુરક્ષા પિન</h4>
+              <h4 className="font-bold text-slate-900 text-lg">Admin સુરક્ષા Login</h4>
               <p className="text-xs text-slate-500 mt-1">
-                એડમિન કંટ્રોલ સેન્ટર ખોલવા માટે સુરક્ષા PIN દાખલ કરો. PIN સર્વર પર{" "}
-                <code className="bg-slate-100 px-1 rounded">ADMIN_PIN</code> તરીકે સેટ થાય છે.
+                એડમિન કંટ્રોલ સેન્ટર ખોલવા માટે Admin Password / PIN દાખલ કરો (Supabase Cloud Database અથવા Local PIN).
               </p>
             </div>
 
@@ -719,8 +779,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 maxLength={PIN_MAX_LENGTH}
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="Admin PIN"
-                className="w-full text-center text-xl font-mono tracking-widest px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                placeholder="Admin Password / PIN"
+                className="w-full text-center text-lg font-mono tracking-widest px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 autoFocus
               />
               {authError && (
@@ -865,6 +925,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               >
                 <Bot className="w-4 h-4" />
                 <span>🤖 ટેલિગ્રામ બોટ સેટિંગ્સ</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab("database");
+                  fetchSupabaseStatus();
+                }}
+                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                  activeTab === "database"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Database className="w-4 h-4" />
+                <span>🗄️ Supabase ડેટાબેઝ &amp; પાસવર્ડ</span>
               </button>
             </div>
 
@@ -1853,6 +1928,197 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <p>• <strong>/stats</strong> : સિસ્ટમના તમામ MCQs અને ટેસ્ટના આંકડા જુઓ.</p>
                       <p>• <strong>/start</strong> અથવા <strong>/app</strong> : મોબાઇલ-ફ્રેન્ડલી Telegram Mini App ખોલો જેથી સામાન્ય યુઝર્સ પણ પોતાના પ્રશ્નો/ટેસ્ટ બનાવી શકે.</p>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: SUPABASE DATABASE & ADMIN PASSWORD */}
+            {activeTab === "database" && (
+              <div className="max-w-3xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                      <Database className="w-5 h-5 text-emerald-600" />
+                      <span>Supabase Cloud Database &amp; Admin Security</span>
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      તમારા Supabase PostgreSQL ક્લાઉડ ડેટાબેઝ સાથે જોડાણ અને Admin Password નું કેન્દ્રિય સંચાલન.
+                    </p>
+                  </div>
+                  <button
+                    onClick={fetchSupabaseStatus}
+                    disabled={loadingSupabase}
+                    className="self-start px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingSupabase ? "animate-spin" : ""}`} />
+                    <span>રિફ્રેશ સ્ટેટસ</span>
+                  </button>
+                </div>
+
+                {/* Connection Status Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+                    <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                      Supabase REST API
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${supabaseData?.connected ? "bg-emerald-500" : "bg-rose-500"}`} />
+                      <span className="font-bold text-slate-900 text-sm">
+                        {supabaseData?.connected ? "કનેક્ટેડ (Online)" : "ડિસ્કનેક્ટ"}
+                      </span>
+                    </div>
+                    {supabaseData?.latencyMs ? (
+                      <p className="text-[11px] text-emerald-600 font-mono">
+                        રેસ્પોન્સ: {supabaseData.latencyMs}ms
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+                    <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                      app_settings ટેબલ
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${supabaseData?.tableExists ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
+                      <span className="font-bold text-slate-900 text-sm">
+                        {supabaseData?.tableExists ? "એક્ટિવ ✓" : "ટેબલ મળ્યું નથી ⚠️"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      {supabaseData?.tableExists ? "SQL સ્કીમા કન્ફિગર થયેલ છે" : "નીચેની SQL સ્ક્રિપ્ટ રન કરો"}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+                    <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                      Admin Password સ્ત્રોત
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Key className="w-4 h-4 text-emerald-600" />
+                      <span className="font-bold text-slate-900 text-sm">
+                        {supabaseData?.hasPinInSupabase ? "Supabase Cloud" : "Local / ENV (Fallback)"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      {supabaseData?.hasPinInSupabase ? "ડેટાબેઝમાંથી વેરિફાય થાય છે" : "ડિફોલ્ટ PIN: 7777"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Password Management Card */}
+                <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                      <Key className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-slate-900 text-sm">
+                        Supabase માંથી Admin Password બદલો / સેટ કરો
+                      </h5>
+                      <p className="text-[11px] text-slate-500">
+                        તમે અહીંથી જે પાસવર્ડ સેટ કરશો તે સીધો તમારા Supabase ના <code>app_settings</code> ટેબલમાં સેવ થશે.
+                      </p>
+                    </div>
+                  </div>
+
+                  {supabasePinSuccess && (
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span>{supabasePinSuccess}</span>
+                    </div>
+                  )}
+
+                  {supabasePinError && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                      <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                      <span>{supabasePinError}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveSupabasePin} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800 mb-1">
+                        નવો Admin Password / PIN દાખલ કરો *
+                      </label>
+                      <input
+                        type="text"
+                        value={newSupabasePin}
+                        onChange={(e) => setNewSupabasePin(e.target.value)}
+                        placeholder="દા.ત. MySecurePass@2026 અથવા 1234"
+                        required
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        પાસવર્ડ ઓછામાં ઓછો ૩ અક્ષરનો હોવો જોઈએ. તમે Supabase ડેશબોર્ડના Table Editor માંથી પણ સીધો <code>admin_pin</code> ની value બદલી શકો છો.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="submit"
+                        disabled={savingSupabasePin || !newSupabasePin.trim()}
+                        className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50 transition-all"
+                      >
+                        {savingSupabasePin ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                        <span>Supabase માં સેવ કરો</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* 1-Click SQL Setup Card */}
+                <div className="p-5 rounded-3xl bg-slate-900 text-white space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h5 className="font-bold text-sm text-emerald-400 flex items-center gap-1.5">
+                        <span>⚡ Supabase SQL Setup Script (1-Click Copy)</span>
+                      </h5>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        તમારા Supabase માં <code>app_settings</code> ટેબલ બનાવવા માટે નીચેનો SQL કોડ રન કરો.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (supabaseData?.setupSql) {
+                            navigator.clipboard.writeText(supabaseData.setupSql);
+                            setCopiedSql(true);
+                            setTimeout(() => setCopiedSql(false), 2000);
+                          }
+                        }}
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors"
+                      >
+                        {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedSql ? "કોપી થઈ ગયું! ✓" : "SQL કોપી કરો"}</span>
+                      </button>
+
+                      <a
+                        href="https://supabase.com/dashboard/project/wfipwaysilwuuueqamuk/sql/new"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Supabase SQL Editor ખોલો</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto max-h-48">
+                    <pre className="whitespace-pre">{supabaseData?.setupSql || "-- Loading SQL Script..."}</pre>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 text-[11px] text-slate-300 space-y-1">
+                    <span className="font-bold text-amber-300">📌 સ્ટેપ્સ:</span>
+                    <p>૧. ઉપર આપેલ બટનથી <strong>SQL કોપી કરો</strong>.</p>
+                    <p>૨. <strong>Supabase SQL Editor ખોલો</strong> લિંક પર ક્લિક કરી ક્વેરી બોક્સમાં પેસ્ટ કરો.</p>
+                    <p>૩. લીલા રંગના <strong>Run</strong> બટન પર ક્લિક કરો. તરત જ ટેબલ બની જશે અને તમારો એડમિન પાસવર્ડ ક્લાઉડ સાથે કનેક્ટ થઈ જશે!</p>
                   </div>
                 </div>
               </div>

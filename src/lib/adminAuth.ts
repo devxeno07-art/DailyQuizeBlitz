@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextRequest } from "next/server";
+import { getAdminPasswordFromSupabase } from "./supabase";
 
 export const ADMIN_COOKIE = "mcq_admin_session";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
@@ -15,9 +16,30 @@ const base64url = (value: string): string =>
 const sign = (payload: string): string =>
   crypto.createHmac("sha256", getSecret()).update(payload).digest("base64url");
 
-export const verifyAdminPin = (pin: string): boolean => {
+export const verifyAdminPin = async (pin: string): Promise<boolean> => {
+  const receivedStr = String(pin || "").trim();
+  if (!receivedStr) return false;
+
+  // 1. Check Supabase database first for dynamic admin_pin / admin_password
+  try {
+    const supabasePin = await getAdminPasswordFromSupabase();
+    if (supabasePin) {
+      const expected = Buffer.from(supabasePin);
+      const received = Buffer.from(receivedStr);
+      if (
+        expected.length === received.length &&
+        crypto.timingSafeEqual(expected, received)
+      ) {
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn("[adminAuth] Supabase check error, falling back to local PIN:", err);
+  }
+
+  // 2. Fallback to process.env.ADMIN_PIN or default "7777"
   const expected = Buffer.from(getPin());
-  const received = Buffer.from(String(pin || ""));
+  const received = Buffer.from(receivedStr);
   if (expected.length !== received.length) return false;
   return crypto.timingSafeEqual(expected, received);
 };

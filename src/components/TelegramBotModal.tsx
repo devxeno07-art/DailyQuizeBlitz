@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { Paper, TelegramQuiz, TelegramBotConfig } from "@/types";
 import { saveTelegramQuiz, getTelegramBotConfig } from "@/lib/storage";
 import { useAuth } from "@/context/AuthContext";
@@ -19,7 +20,10 @@ import {
   HelpCircle,
   ExternalLink,
   CheckCircle2,
-  BookOpen
+  BookOpen,
+  Printer,
+  Shuffle,
+  ListOrdered
 } from "lucide-react";
 
 interface TelegramBotModalProps {
@@ -37,9 +41,12 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
   
   // Quiz Configuration State
   const [selectedPaperId, setSelectedPaperId] = useState<string>(paper?.id || "");
-  const [testTitle, setTestTitle] = useState<string>(paper?.title || "GSRTC સ્પેશિયલ મોક ટેસ્ટ");
-  const [testSubject, setTestSubject] = useState<string>(paper?.subject || "સામાન્ય જ્ઞાન & એક્ટ");
+  const [testTitle, setTestTitle] = useState<string>(paper?.title || "સ્પર્ધાત્મક પરીક્ષા મોક ટેસ્ટ");
+  const [testSubject, setTestSubject] = useState<string>(paper?.subject || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ");
   const [timePerQuestion, setTimePerQuestion] = useState<number>(30);
+  const [questionCount, setQuestionCount] = useState<number | "all">("all");
+  const [selectionMode, setSelectionMode] = useState<"original" | "random">("original");
+  const [customCountInput, setCustomCountInput] = useState<string>("");
 
   // Generated Result State
   const [generatedQuiz, setGeneratedQuiz] = useState<TelegramQuiz | null>(null);
@@ -84,6 +91,8 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     if (chosen) {
       setTestTitle(chosen.title);
       setTestSubject(chosen.subject || chosen.category);
+      setQuestionCount("all");
+      setCustomCountInput("");
     }
   };
 
@@ -93,9 +102,31 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
       return;
     }
 
-    // Generate readable, memorable test code (e.g. GSRTC-4921 or TEST-8391)
+    let finalQuestions = [...activePaper.questions];
+
+    // If random mode is chosen, shuffle questions
+    if (selectionMode === "random") {
+      finalQuestions = finalQuestions
+        .map((q) => ({ q, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ q }) => q);
+    }
+
+    // If a limited number of questions is chosen, slice
+    if (questionCount !== "all") {
+      const limit = Math.min(finalQuestions.length, Math.max(1, Number(questionCount) || finalQuestions.length));
+      finalQuestions = finalQuestions.slice(0, limit);
+    }
+
+    // Generate readable, memorable test code (e.g. GPSC-4921, EXAM-4921 or TEST-8391)
     const randomDigits = Math.floor(1000 + Math.random() * 9000);
-    const prefix = (activePaper.category?.includes("GSRTC") ? "GSRTC" : "TEST");
+    let prefix = "TEST";
+    if (activePaper.category) {
+      const clean = activePaper.category.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
+      if (clean.length >= 3) {
+        prefix = clean;
+      }
+    }
     const quizCode = `${prefix}-${randomDigits}`;
 
     const newQuiz: TelegramQuiz = {
@@ -104,7 +135,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
       title: testTitle.trim() || activePaper.title,
       subject: testSubject.trim() || activePaper.subject,
       timePerQuestion: Number(timePerQuestion) || 30,
-      questions: activePaper.questions,
+      questions: finalQuestions,
       createdBy: user.name,
       creatorPhone: user.phoneNumber,
       createdAt: new Date().toISOString(),
@@ -123,7 +154,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
   const getGroupShareMessage = () => {
     if (!generatedQuiz) return "";
-    const botName = botConfig.botUsername || "GsrtcMockQuizBot";
+    const botName = botConfig.botUsername || "MockQuizBot";
     return (
       `📢 *નવી લાઈવ મોક ટેસ્ટ શરૂ કરવા માટે તૈયાર!* 🎯\n\n` +
       `📝 *શીર્ષક:* ${generatedQuiz.title}\n` +
@@ -153,9 +184,10 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
   // Export in native Telegram official @QuizBot syntax
   const getQuizBotSyntax = () => {
-    if (!activePaper) return "";
-    let out = `/newquiz\n${activePaper.title}\n${activePaper.subject || "GSRTC Test"}\n\n`;
-    activePaper.questions.forEach((q, idx) => {
+    const questionsToExport = generatedQuiz?.questions || activePaper?.questions || [];
+    if (!activePaper || questionsToExport.length === 0) return "";
+    let out = `/newquiz\n${generatedQuiz?.title || activePaper.title}\n${generatedQuiz?.subject || activePaper.subject || "General Knowledge"}\n\n`;
+    questionsToExport.forEach((q, idx) => {
       out += `Q${idx + 1}: ${q.questionText}\n`;
       q.options.forEach((opt, optIdx) => {
         const isAns = q.correctAnswer === optIdx ? " [CORRECT]" : "";
@@ -242,7 +274,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                   type="text"
                   value={testTitle}
                   onChange={(e) => setTestTitle(e.target.value)}
-                  placeholder="દા.ત. GSRTC કંડક્ટર મોક ટેસ્ટ - 1"
+                  placeholder="દા.ત. GPSC / પોલીસ કોન્સ્ટેબલ મોક ટેસ્ટ - 1"
                   required
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900"
                 />
@@ -321,9 +353,127 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                 <span>💡 લઘુત્તમ 10 થી મહત્તમ 600 સેકન્ડ સુધી કોઈપણ સમય જાતે ટાઈપ કરી શકો છો.</span>
                 {activePaper?.questions?.length ? (
                   <span className="font-medium text-slate-500">
-                    કુલ સમય: ~{Math.ceil(((timePerQuestion || 30) * activePaper.questions.length) / 60)} મિનિટ
+                    કુલ સમય: ~{Math.ceil(((timePerQuestion || 30) * (questionCount === "all" ? activePaper.questions.length : Math.min(Number(questionCount) || activePaper.questions.length, activePaper.questions.length))) / 60)} મિનિટ
                   </span>
                 ) : null}
+              </div>
+            </div>
+
+            {/* Question Order & Random Pick Mode */}
+            <div className="space-y-1.5 pt-1 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Shuffle className="w-3.5 h-3.5 text-sky-600" />
+                  <span>પ્રશ્ન પસંદગી ક્રમ (Question Order)</span>
+                </label>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {selectionMode === "random" ? "🎲 રેન્ડમ પસંદ (Random Pick)" : "📑 જેવા છે તેવા (Original)"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectionMode("original")}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                    selectionMode === "original"
+                      ? "bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                  <span>જેવા છે તેવા (મૂળ ક્રમ)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectionMode("random")}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                    selectionMode === "random"
+                      ? "bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-500/20"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <Shuffle className="w-3.5 h-3.5" />
+                  <span>રેન્ડમ પસંદ (Random Pick)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Question Count Selector */}
+            <div className="space-y-2 pt-1 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-sky-600" />
+                  <span>ટેસ્ટમાં કેટલા પ્રશ્નો રાખવા? (Question Count)</span>
+                </label>
+                <span className="text-[11px] font-bold font-mono text-sky-700 bg-sky-100/70 border border-sky-200 px-2 py-0.5 rounded-md">
+                  {questionCount === "all"
+                    ? `બધા (${activePaper?.questions?.length || 0}) પ્રશ્નો`
+                    : `${questionCount} પ્રશ્નો (કુલ ${activePaper?.questions?.length || 0} માંથી)`}
+                </span>
+              </div>
+
+              {/* Quick Select Chips + Custom Input */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuestionCount("all");
+                    setCustomCountInput("");
+                  }}
+                  className={`py-1.5 px-3 rounded-xl text-xs font-bold border transition-all ${
+                    questionCount === "all"
+                      ? "bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  બધા (All - {activePaper?.questions?.length || 0})
+                </button>
+
+                {[10, 20, 25, 30, 50].map((num) => {
+                  if ((activePaper?.questions?.length || 0) < num) return null;
+                  return (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => {
+                        setQuestionCount(num);
+                        setCustomCountInput(String(num));
+                      }}
+                      className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all ${
+                        questionCount === num
+                          ? "bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      {num} Qs
+                    </button>
+                  );
+                })}
+
+                <div className="flex items-center gap-1 ml-auto">
+                  <span className="text-[11px] text-slate-400 font-medium">કસ્ટમ:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={activePaper?.questions?.length || 100}
+                    value={customCountInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomCountInput(val);
+                      const parsed = parseInt(val, 10);
+                      if (!isNaN(parsed) && parsed > 0) {
+                        const capped = Math.min(parsed, activePaper?.questions?.length || 100);
+                        setQuestionCount(capped);
+                      } else if (val === "") {
+                        setQuestionCount("all");
+                      }
+                    }}
+                    placeholder="દા.ત. 15"
+                    className="w-16 px-2 py-1 text-xs font-bold font-mono text-center rounded-lg border border-slate-300 focus:border-sky-500 focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 
@@ -409,7 +559,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
                 {/* Direct Add Bot to Group Link */}
                 <a
-                  href={`https://t.me/${botConfig.botUsername || "GsrtcMockQuizBot"}?startgroup=${generatedQuiz.code}`}
+                  href={`https://t.me/${botConfig.botUsername || "MockQuizBot"}?startgroup=${generatedQuiz.code}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 hover:from-blue-700 hover:to-indigo-700 transition-colors"
@@ -418,6 +568,16 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                   <span>બોટને તમારા ટેલિગ્રામ ગ્રૂપમાં એડ કરો</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
+
+                {/* Direct Link to PDF Studio */}
+                <Link
+                  href={`/pdf-studio?quizCode=${generatedQuiz.code}`}
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 hover:from-emerald-700 hover:to-teal-700 transition-all"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>આ ટેસ્ટના પ્રશ્નો PDF Studio માં ખોલો (A4 પ્રિન્ટ)</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                </Link>
               </div>
 
               {/* QuizBot Official Syntax alternative */}

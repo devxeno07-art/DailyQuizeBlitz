@@ -61,24 +61,35 @@ export const saveServerBotConfig = async (
   await kvSetJson(BOT_CONFIG_KEY, config);
 };
 
-const normalizeQuiz = (quiz: TelegramQuiz): TelegramQuiz => ({
-  ...quiz,
-  code: String(quiz.code || "").trim().toUpperCase(),
-  title: String(quiz.title || "મોક ટેસ્ટ").slice(0, 200),
-  subject: String(quiz.subject || "સામાન્ય જ્ઞાન").slice(0, 200),
-  timePerQuestion: Math.max(10, Math.min(600, Number(quiz.timePerQuestion) || 30)),
-  questions: Array.isArray(quiz.questions)
-    ? quiz.questions.slice(0, 500).map((q) => ({
-        ...q,
-        questionText: String(q.questionText || "").slice(0, 3000),
-        options: Array.isArray(q.options)
-          ? q.options.slice(0, 10).map((o) => String(o || "").slice(0, 500))
-          : [],
-        correctAnswer: Math.max(0, Number(q.correctAnswer) || 0),
-        explanation: q.explanation ? String(q.explanation).slice(0, 4000) : "",
-      }))
-    : [],
-});
+const normalizeQuiz = (quiz: TelegramQuiz): TelegramQuiz => {
+  let title = String(quiz.title || "સ્પર્ધાત્મક પરીક્ષા મોક ટેસ્ટ").trim().slice(0, 200);
+  if (title === "GSRTC સ્પેશિયલ મોક ટેસ્ટ") {
+    title = "સ્પર્ધાત્મક પરીક્ષા મોક ટેસ્ટ";
+  }
+  let subject = String(quiz.subject || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ").trim().slice(0, 200);
+  if (subject === "સામાન્ય જ્ઞાન & એક્ટ") {
+    subject = "સામાન્ય જ્ઞાન & કરંટ અફેર્સ";
+  }
+
+  return {
+    ...quiz,
+    code: String(quiz.code || "").trim().toUpperCase(),
+    title,
+    subject,
+    timePerQuestion: Math.max(10, Math.min(600, Number(quiz.timePerQuestion) || 30)),
+    questions: Array.isArray(quiz.questions)
+      ? quiz.questions.slice(0, 500).map((q) => ({
+          ...q,
+          questionText: String(q.questionText || "").slice(0, 3000),
+          options: Array.isArray(q.options)
+            ? q.options.slice(0, 10).map((o) => String(o || "").slice(0, 500))
+            : [],
+          correctAnswer: Math.max(0, Number(q.correctAnswer) || 0),
+          explanation: q.explanation ? String(q.explanation).slice(0, 4000) : "",
+        }))
+      : [],
+  };
+};
 
 export const getAllServerQuizzes = async (): Promise<TelegramQuiz[]> => {
   const quizzes = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
@@ -175,8 +186,9 @@ export const findSessionByPollId = async (
   pollId: string
 ): Promise<TelegramQuizSession | null> => {
   const all = await getAllSessions();
+  const target = String(pollId || "").trim();
   return (
-    all.find((s) => s.polls.some((p) => p.pollId === pollId)) || null
+    all.find((s) => s.polls.some((p) => String(p.pollId).trim() === target)) || null
   );
 };
 

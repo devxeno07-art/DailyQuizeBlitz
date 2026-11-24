@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const OFFSET_KEY = "bot_offset.json";
+let isPollingInProgress = false;
 
 const getStoredOffset = async (): Promise<number> => {
   const stored = await kvGetJson<{ offset?: number }>(OFFSET_KEY, {});
@@ -64,71 +65,95 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const botConfig = await getServerBotConfig();
-  const token = botConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
-
-  if (!token) {
-    return NextResponse.json(
-      { ok: false, error: "No bot token configured" },
-      { status: 400 }
-    );
-  }
-
-  // Deliver the next sequential question when its timer has elapsed, then
-  // finalize any session whose last poll has closed.
-  const advanced = await advanceQuizSessions();
-  const finalized = await finalizeDueSessions();
-
-  let currentOffset = await getStoredOffset();
-
-  try {
-    const offsetParam =
-      currentOffset > 0 ? `offset=${currentOffset}` : "offset=-10";
-    const url = `https://api.telegram.org/bot${token}/getUpdates?${offsetParam}&timeout=1&limit=20`;
-
-    const res = await fetch(url, { cache: "no-store" });
-    const data = await res.json();
-
-    if (!data.ok) {
-      console.warn("[Telegram Poll Error]:", data);
-      return NextResponse.json({
-        ok: false,
-        advancedPolls: advanced.sent,
-        finalized,
-        error: data.description || "Telegram API error",
-      });
-    }
-
-    const updates = data.result || [];
-    const processed: Array<{ update_id: number; res: any }> = [];
-    const hostOrigin = req.nextUrl?.origin;
-
-    for (const update of updates) {
-      currentOffset = Math.max(currentOffset, update.update_id + 1);
-      await saveStoredOffset(currentOffset);
-
-      const result = await processTelegramUpdate(update, hostOrigin);
-      processed.push({ update_id: update.update_id, res: result });
-    }
-
-    if (updates.length > 0) {
-      await finalizeDueSessions();
-    }
-
+  // Prevent concurrent poll overlapping which causes Telegram 409 Conflict
+  if (isPollingInProgress) {
     return NextResponse.json({
       ok: true,
-      advancedPolls: advanced.sent,
-      advanceErrors: advanced.errors,
-      finalized,
-      processedCount: processed.length,
-      nextOffset: currentOffset,
-      processed,
+      skipped: true,
+      message: "Poll already in progress",
     });
-  } catch (err: any) {
-    console.error("[Telegram Poll Exception]:", err);
-    return NextResponse.json(
-      { ok: false, error: err.message },
-      { status: 500 }
-    );
+  }
+
+  isPollingInProgress = true;
+
+  try {
+    const botConfig = await getServerBotConfig();
+    const token = botConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+
+    if (!token) {
+      return NextResponse.json(
+        { ok: false, error: "No bot token configured" },
+        { status: 400 }
+      );
+    }
+
+    // Deliver the next sequential question when its timer has elapsed, then
+    // finalize any session whose last poll has closed.
+    const advanced = await advanceQuizSessions();
+    const finalized = await finalizeDueSessions();
+
+    let currentOffset = await getStoredOffset();
+
+    try {
+      const offsetParam =
+        currentOffset > 0 ? `offset=${currentOffset}` : "offset=-10";
+      const allowedUpdates = encodeURIComponent(
+        JSON.stringify([
+          "message",
+          "channel_post",
+          "callback_query",
+          "poll_answer",
+          "poll",
+        ])
+      );
+      const url = `https://api.telegram.org/bot${token}/getUpdates?${offsetParam}&timeout=1&limit=20&allowed_updates=${allowedUpdates}`;
+
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+
+      if (!data.ok) {
+        console.warn("[Telegram Poll Error]:", data);
+        return NextResponse.json({
+          ok: false,
+          advancedPolls: advanced.sent,
+          finalized,
+          error: data.description || "Telegram API error",
+        });
+      }
+
+      const updates = data.result || [];
+      const processed: Array<{ update_id: number; res: any }> = [];
+      const hostOrigin = req.nextUrl?.origin;
+
+      for (const update of updates) {
+        currentOffset = Math.max(currentOffset, update.update_id + 1);
+        await saveStoredOffset(currentOffset);
+
+        const result = await processTelegramUpdate(update, hostOrigin);
+        processed.push({ update_id: update.update_id, res: result });
+      }
+
+      if (updates.length > 0) {
+        await finalizeDueSessions();
+      }
+
+      return NextResponse.json({
+        ok: true,
+        advancedPolls: advanced.sent,
+        advanceErrors: advanced.errors,
+        finalized,
+        processedCount: processed.length,
+        nextOffset: currentOffset,
+        processed,
+      });
+    } catch (err: any) {
+      console.error("[Telegram Poll Exception]:", err);
+      return NextResponse.json(
+        { ok: false, error: err.message },
+        { status: 500 }
+      );
+    }
+  } finally {
+    isPollingInProgress = false;
   }
 }

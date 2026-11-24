@@ -219,7 +219,7 @@ export const PaperList: React.FC<PaperListProps> = ({
       await savePaper(paper);
       setImportMsg({
         ok: true,
-        text: "GSRTC નમૂનો પેપર ઉમેરાયું! હવે ટેસ્ટ આપો અથવા ટેલિગ્રામ કોડ બનાવો.",
+        text: "નમૂનો મોક ટેસ્ટ પેપર ઉમેરાયું! હવે ટેસ્ટ આપો અથવા ટેલિગ્રામ કોડ બનાવો.",
       });
     } catch (err: any) {
       setImportMsg({

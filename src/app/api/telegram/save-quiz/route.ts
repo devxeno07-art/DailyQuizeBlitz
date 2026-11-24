@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { saveServerQuiz } from "@/lib/serverStorage";
+import { getServerQuizByCode, saveServerQuiz } from "@/lib/serverStorage";
+import { isAdminRequest } from "@/lib/adminAuth";
 import { TelegramQuiz } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,26 @@ export async function POST(req: NextRequest) {
         { ok: false, error: "Invalid quiz code format" },
         { status: 400 }
       );
+    }
+
+    // Ownership check: If a quiz with this code already exists, ensure only
+    // the original creator or an admin can update it.
+    const existing = await getServerQuizByCode(quiz.code);
+    if (existing) {
+      const isCreator =
+        Boolean(existing.creatorPhone && quiz.creatorPhone && existing.creatorPhone === quiz.creatorPhone) ||
+        Boolean(existing.paperId && quiz.paperId && existing.paperId === quiz.paperId);
+      const isAdmin = isAdminRequest(req);
+
+      if (!isCreator && !isAdmin) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "આ ટેસ્ટ કોડ પહેલેથી જ અસ્તિત્વમાં છે. અન્ય યુઝરનો ટેસ્ટ કોઈ એડિટ કરી શકતું નથી.",
+          },
+          { status: 403 }
+        );
+      }
     }
 
     await saveServerQuiz(quiz);
