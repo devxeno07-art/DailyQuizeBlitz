@@ -162,8 +162,10 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
     setSaveStatus("saving");
     saveTemporaryDraft(paper.id, newQuestions);
 
+    const code = currentPaper.testCode || generateTestCode(currentPaper.category || "GSRTC");
     const updated: Paper = {
       ...currentPaper,
+      testCode: code,
       questions: newQuestions,
       isDigitizedCompleted: completedState !== undefined ? completedState : isCompleted,
       updatedAt: new Date().toISOString(),

@@ -13,8 +13,26 @@ export async function GET() {
   try {
     const quizzes = await getAllServerQuizzes();
 
+    // Deduplicate by paperId or title, keeping the version with the highest question count
+    const map = new Map<string, typeof quizzes[0]>();
+    for (const q of quizzes) {
+      const key = q.paperId || `${q.title}_${q.creatorPhone || ""}`;
+      const existing = map.get(key);
+      if (
+        !existing ||
+        (q.questions?.length || 0) > (existing.questions?.length || 0)
+      ) {
+        map.set(key, q);
+      }
+    }
+
+    const deduplicated = Array.from(map.values()).sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
     // Map TelegramQuiz into Paper model for client consumption
-    const papers: Paper[] = quizzes.map((q) => ({
+    const papers: Paper[] = deduplicated.map((q) => ({
       id: q.paperId || `server_${q.code}`,
       userId: q.creatorPhone || "",
       userName: q.createdBy || "શિક્ષક / વિદ્યાર્થી",

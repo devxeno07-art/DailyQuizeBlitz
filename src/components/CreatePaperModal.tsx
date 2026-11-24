@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Paper, Question } from "@/types";
-import { savePaper } from "@/lib/storage";
+import { savePaper, generateTestCode } from "@/lib/storage";
 import { X, BookOpen, Plus, Tag, HelpCircle, Clock, Sparkles } from "lucide-react";
 
 interface CreatePaperModalProps {
@@ -116,6 +116,7 @@ export const CreatePaperModal: React.FC<CreatePaperModalProps> = ({
       targetQuestions: Number(targetQuestions) || 50,
       timeLimitMinutes: Number(timeLimitMinutes) || 60,
       isPublic: true,
+      testCode: generateTestCode(category),
       questions: initialQuestions,
       createdAt: now,
       updatedAt: now,

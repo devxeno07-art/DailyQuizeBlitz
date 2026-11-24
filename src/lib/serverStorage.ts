@@ -93,7 +93,24 @@ const normalizeQuiz = (quiz: TelegramQuiz): TelegramQuiz => {
 
 export const getAllServerQuizzes = async (): Promise<TelegramQuiz[]> => {
   const quizzes = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
-  return Array.isArray(quizzes) ? quizzes : [];
+  if (!Array.isArray(quizzes)) return [];
+
+  // Deduplicate quizzes sharing the same paperId, keeping highest question count
+  const map = new Map<string, TelegramQuiz>();
+  for (const q of quizzes) {
+    const key = q.paperId || q.code.toUpperCase();
+    const existing = map.get(key);
+    if (
+      !existing ||
+      (q.questions?.length || 0) > (existing.questions?.length || 0)
+    ) {
+      map.set(key, q);
+    }
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 };
 
 export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
@@ -101,20 +118,42 @@ export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
   const normalized = normalizeQuiz(quiz);
 
   await withKeyLock(QUIZZES_KEY, async () => {
-    const all = await getAllServerQuizzes();
-    const idx = all.findIndex(
-      (q) => q.code.toUpperCase() === normalized.code.toUpperCase()
+    const all = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
+    const list = Array.isArray(all) ? all : [];
+
+    const idx = list.findIndex(
+      (q) =>
+        q.code.toUpperCase() === normalized.code.toUpperCase() ||
+        (Boolean(normalized.paperId) &&
+          Boolean(q.paperId) &&
+          q.paperId === normalized.paperId)
     );
+
     if (idx >= 0) {
-      all[idx] = normalized;
+      list[idx] = normalized;
     } else {
-      all.unshift(normalized);
+      list.unshift(normalized);
     }
-    all.sort(
+
+    // Deduplicate by paperId (keeping highest question count)
+    const map = new Map<string, TelegramQuiz>();
+    for (const q of list) {
+      const key = q.paperId || q.code.toUpperCase();
+      const existing = map.get(key);
+      if (
+        !existing ||
+        (q.questions?.length || 0) >= (existing.questions?.length || 0)
+      ) {
+        map.set(key, q);
+      }
+    }
+
+    const deduplicated = Array.from(map.values()).sort(
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-    await kvSetJson(QUIZZES_KEY, all.slice(0, MAX_QUIZZES));
+
+    await kvSetJson(QUIZZES_KEY, deduplicated.slice(0, MAX_QUIZZES));
   });
 };
 
