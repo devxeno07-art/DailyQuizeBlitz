@@ -83,8 +83,11 @@ export interface TelegramBotConfig {
 export interface ScheduledDailyTest {
   id: string;
   title: string;
-  mode: 'all_mixed' | 'subject_wise';
+  mode: 'all_mixed' | 'subject_wise' | 'specific_test';
   subject?: string;
+  specificTestCode?: string; // e.g. "TEST-1062"
+  specificPaperId?: string;
+  shuffleQuestions?: boolean; // true = random shuffle, false = sequential from Q1
   questionCount: number;
   timePerQuestion: number;
   scheduledTime: string; // e.g. "21:00" (Asia/Kolkata)

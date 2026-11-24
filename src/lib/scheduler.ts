@@ -101,6 +101,23 @@ const collectCandidateQuestions = (
   quizzes: TelegramQuiz[],
   schedule: ScheduledDailyTest
 ): Question[] => {
+  if (schedule.mode === "specific_test") {
+    const code = String(schedule.specificTestCode || "").trim().toUpperCase();
+    const paperId = String(schedule.specificPaperId || "").trim();
+
+    const matched = quizzes.find(
+      (quiz) =>
+        (Boolean(code) && quiz.code?.toUpperCase() === code) ||
+        (Boolean(paperId) && quiz.paperId === paperId) ||
+        (Boolean(code) && String(quiz.paperId || "").toUpperCase() === code) ||
+        (Boolean(code) && quiz.code?.toUpperCase().endsWith(code))
+    );
+
+    if (matched && Array.isArray(matched.questions) && matched.questions.length > 0) {
+      return matched.questions;
+    }
+  }
+
   let relevant = quizzes;
 
   if (schedule.mode === "subject_wise" && schedule.subject) {
@@ -131,30 +148,50 @@ export const buildQuizFromSchedule = async (
     1,
     Math.min(Number(schedule.questionCount) || 20, candidates.length)
   );
-  const selected = shuffle(candidates).slice(0, requested);
+
+  const shouldShuffle = schedule.shuffleQuestions !== false;
+  const selected = shouldShuffle
+    ? shuffle(candidates).slice(0, requested)
+    : candidates.slice(0, requested);
+
   const questions = selected.map((question, index) => ({
     ...question,
     questionNumber: index + 1,
   }));
 
   const existingCodes = new Set(quizzes.map((q) => q.code.toUpperCase()));
-  const prefix = schedule.mode === "subject_wise" ? "SUBJ" : "DAILY";
+  const prefix =
+    schedule.mode === "specific_test"
+      ? (schedule.specificTestCode?.replace(/-\d+$/, "").toUpperCase() || "TEST")
+      : schedule.mode === "subject_wise"
+      ? "SUBJ"
+      : "DAILY";
   const code = await generateUniqueCode(prefix, existingCodes);
 
   const now = new Date().toISOString();
-  const subjectLabel =
-    schedule.mode === "subject_wise" && schedule.subject
-      ? schedule.subject
-      : "ડેઇલી મિક્સ ઓલ વિષય";
+  let defaultTitle = "ડેઇલી મેગા મોક ટેસ્ટ";
+  let subjectLabel = "ડેઇલી મિક્સ ઓલ વિષય";
+
+  if (schedule.mode === "specific_test") {
+    const matched = quizzes.find(
+      (q) =>
+        (schedule.specificTestCode &&
+          q.code?.toUpperCase() === schedule.specificTestCode.toUpperCase()) ||
+        (schedule.specificPaperId && q.paperId === schedule.specificPaperId)
+    );
+    defaultTitle = matched?.title
+      ? `${matched.title} (Daily)`
+      : `મોક ટેસ્ટ [${schedule.specificTestCode || "TEST"}]`;
+    subjectLabel = matched?.subject || matched?.title || "વિશેષ મોક ટેસ્ટ";
+  } else if (schedule.mode === "subject_wise" && schedule.subject) {
+    defaultTitle = `${schedule.subject} મોક ટેસ્ટ`;
+    subjectLabel = schedule.subject;
+  }
 
   const quiz: TelegramQuiz = {
     code,
     paperId: `sched_${schedule.id}`,
-    title:
-      schedule.title ||
-      (schedule.mode === "subject_wise"
-        ? `${subjectLabel} મોક ટેસ્ટ`
-        : "ડેઇલી મેગા મોક ટેસ્ટ"),
+    title: schedule.title || defaultTitle,
     subject: subjectLabel,
     timePerQuestion: Math.max(
       10,

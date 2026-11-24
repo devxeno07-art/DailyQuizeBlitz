@@ -14,8 +14,15 @@ const sanitizeSchedule = (
   existing?: ScheduledDailyTest
 ): ScheduledDailyTest => {
   const now = new Date().toISOString();
-  const mode: ScheduledDailyTest["mode"] =
-    body?.mode === "subject_wise" ? "subject_wise" : "all_mixed";
+  let mode: ScheduledDailyTest["mode"] = "all_mixed";
+  if (body?.mode === "specific_test") {
+    mode = "specific_test";
+  } else if (body?.mode === "subject_wise") {
+    mode = "subject_wise";
+  } else if (existing?.mode) {
+    mode = existing.mode;
+  }
+
   const scheduledTime = String(
     body?.scheduledTime ?? existing?.scheduledTime ?? "21:00"
   ).trim();
@@ -23,6 +30,13 @@ const sanitizeSchedule = (
   if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(scheduledTime)) {
     throw new Error("Invalid scheduledTime, expected HH:mm");
   }
+
+  const shuffleQuestions =
+    body?.shuffleQuestions !== undefined
+      ? Boolean(body.shuffleQuestions)
+      : existing?.shuffleQuestions !== undefined
+      ? Boolean(existing.shuffleQuestions)
+      : true;
 
   return {
     id:
@@ -36,10 +50,21 @@ const sanitizeSchedule = (
       mode === "subject_wise"
         ? String(body?.subject ?? existing?.subject ?? "").trim().slice(0, 120)
         : "",
+    specificTestCode:
+      mode === "specific_test"
+        ? String(body?.specificTestCode ?? existing?.specificTestCode ?? "")
+            .trim()
+            .toUpperCase()
+        : undefined,
+    specificPaperId:
+      mode === "specific_test"
+        ? String(body?.specificPaperId ?? existing?.specificPaperId ?? "").trim()
+        : undefined,
+    shuffleQuestions,
     questionCount: Math.max(
       1,
       Math.min(
-        200,
+        500,
         Number(body?.questionCount ?? existing?.questionCount) || 20
       )
     ),

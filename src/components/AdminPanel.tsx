@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   UserProfile, 
   Paper, 
@@ -63,7 +63,10 @@ import {
   LogOut,
   Webhook,
   Server,
-  Key
+  Key,
+  Shuffle,
+  ListOrdered,
+  Edit3
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -174,16 +177,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Daily Scheduler State
   const [scheduledTests, setScheduledTests] = useState<ScheduledDailyTest[]>([]);
-  const [schedTitle, setSchedTitle] = useState("ડેઇલી મેગા મોક ટેસ્ટ - GSRTC");
-  const [schedMode, setSchedMode] = useState<"all_mixed" | "subject_wise">("all_mixed");
+  const [schedTitle, setSchedTitle] = useState("ડેઇલી મોક ટેસ્ટ");
+  const [schedMode, setSchedMode] = useState<"all_mixed" | "subject_wise" | "specific_test">("specific_test");
   const [schedSubject, setSchedSubject] = useState("");
-  const [schedQuestionCount, setSchedQuestionCount] = useState(50);
+  const [schedSpecificCode, setSchedSpecificCode] = useState("");
+  const [schedShuffle, setSchedShuffle] = useState(true);
+  const [schedQuestionCount, setSchedQuestionCount] = useState(25);
   const [schedTimePerQ, setSchedTimePerQ] = useState(30);
   const [schedDailyTime, setSchedDailyTime] = useState("21:00");
   const [schedTargetGroup, setSchedTargetGroup] = useState("");
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [lastDispatchedQuiz, setLastDispatchedQuiz] = useState<TelegramQuiz | null>(null);
   const [copiedDispatchedCode, setCopiedDispatchedCode] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [serverCommunityPapers, setServerCommunityPapers] = useState<Paper[]>([]);
+  const [testSearchFilter, setTestSearchFilter] = useState("");
 
   // Add Source Paper Form Modal
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
@@ -249,13 +257,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     const loadServerData = async () => {
       try {
-        const [cfgRes, statsRes, schedules] = await Promise.all([
+        const [cfgRes, statsRes, schedules, papersRes] = await Promise.all([
           fetch("/api/telegram/config", { cache: "no-store" }),
           fetch("/api/admin/stats", { cache: "no-store" }),
           fetchServerScheduledTests().catch(() => [] as ScheduledDailyTest[]),
+          fetch("/api/papers", { cache: "no-store" }).catch(() => null),
         ]);
 
         if (!active) return;
+
+        if (papersRes && papersRes.ok) {
+          const pData = await papersRes.json().catch(() => ({}));
+          if (pData.ok && Array.isArray(pData.papers)) {
+            setServerCommunityPapers(pData.papers);
+          }
+        }
 
         const cfg = await cfgRes.json().catch(() => ({}));
         if (cfgRes.ok && cfg && cfg.botUsername) {
@@ -398,27 +414,74 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Scheduler & Bot Handlers
-  const availableSubjects = Array.from(
-    new Set(allPapers.map((p) => (p.subject || p.category || "").trim()).filter(Boolean))
-  );
+  const availableTests = useMemo(() => {
+    const map = new Map<string, Paper>();
+    serverCommunityPapers.forEach((p) => {
+      const key = (p.testCode || p.id).toUpperCase();
+      map.set(key, p);
+    });
+    allPapers.forEach((p) => {
+      const key = (p.testCode || p.id).toUpperCase();
+      const existing = map.get(key);
+      if (!existing || (p.questions?.length || 0) >= (existing.questions?.length || 0)) {
+        map.set(key, p);
+      }
+    });
+    return Array.from(map.values()).sort(
+      (a, b) => (b.questions?.length || 0) - (a.questions?.length || 0)
+    );
+  }, [allPapers, serverCommunityPapers]);
+
+  const availableSubjects = useMemo(() => {
+    const all = [...allPapers, ...serverCommunityPapers];
+    return Array.from(
+      new Set(all.map((p) => (p.subject || p.category || "").trim()).filter(Boolean))
+    );
+  }, [allPapers, serverCommunityPapers]);
 
   const getSubjectQuestionCount = (subj: string) => {
-    const matching = allPapers.filter(
-      (p) =>
-        p.subject?.toLowerCase().trim() === subj.toLowerCase().trim() ||
-        p.category?.toLowerCase().trim() === subj.toLowerCase().trim()
-    );
-    return matching.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
+    const all = [...allPapers, ...serverCommunityPapers];
+    const seen = new Set<string>();
+    let count = 0;
+    all.forEach((p) => {
+      const s = (p.subject || p.category || "").trim().toLowerCase();
+      if (s === subj.toLowerCase()) {
+        const key = (p.testCode || p.id).toUpperCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          count += p.questions?.length || 0;
+        }
+      }
+    });
+    return count;
   };
 
   const handleSaveSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedPaper = availableTests.find(
+      (t) => (t.testCode || t.id).toUpperCase() === schedSpecificCode.toUpperCase()
+    );
+
     const newSchedule: ScheduledDailyTest = {
-      id: `sched_${Date.now()}`,
-      title: schedTitle.trim() || "ડેઇલી મોક ટેસ્ટ",
+      id: editingScheduleId || `sched_${Date.now()}`,
+      title:
+        schedTitle.trim() ||
+        (selectedPaper ? `${selectedPaper.title} (Daily)` : "ડેઇલી મોક ટેસ્ટ"),
       mode: schedMode,
-      subject: schedMode === "subject_wise" ? (schedSubject || availableSubjects[0] || "સામાન્ય જ્ઞાન") : "બધા વિષયો મિક્સ",
-      questionCount: Number(schedQuestionCount) || 50,
+      subject:
+        schedMode === "subject_wise"
+          ? (schedSubject || availableSubjects[0] || "સામાન્ય જ્ઞાન")
+          : schedMode === "specific_test"
+          ? (selectedPaper?.subject || selectedPaper?.title || "ચોક્કસ ટેસ્ટ")
+          : "બધા વિષયો મિક્સ",
+      specificTestCode:
+        schedMode === "specific_test"
+          ? (schedSpecificCode || selectedPaper?.testCode)
+          : undefined,
+      specificPaperId:
+        schedMode === "specific_test" ? selectedPaper?.id : undefined,
+      shuffleQuestions: schedShuffle,
+      questionCount: Number(schedQuestionCount) || 25,
       timePerQuestion: Number(schedTimePerQ) || 30,
       scheduledTime: schedDailyTime,
       isActive: true,
@@ -427,12 +490,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
     try {
       await saveScheduledDailyTest(newSchedule);
-      setScheduledTests(getLocalScheduledTests());
-      alert("ડેઇલી ટેસ્ટ શેડ્યુલ સર્વર પર સફળતાપૂર્વક સેવ થયું! હવે ક્રોન આપોઆપ ચલાવશે.");
+      const updated = await fetchServerScheduledTests().catch(() =>
+        getLocalScheduledTests()
+      );
+      setScheduledTests(updated);
+      alert(
+        editingScheduleId
+          ? "ડેઇલી ટેસ્ટ શેડ્યુલ સફળતાપૂર્વક અપડેટ થયું!"
+          : "નવું ડેઇલી ટેસ્ટ શેડ્યુલ સર્વર પર સફળતાપૂર્વક સેવ થયું! હવે ક્રોન નિર્ધારિત સમયે આપોઆપ ચલાવશે."
+      );
+      setEditingScheduleId(null);
       refreshServerStats();
     } catch (err: any) {
       alert(err?.message || "શેડ્યુલ સેવ થઈ શક્યું નહીં.");
     }
+  };
+
+  const handleEditSchedule = (s: ScheduledDailyTest) => {
+    setEditingScheduleId(s.id);
+    setSchedTitle(s.title);
+    setSchedMode(s.mode || "all_mixed");
+    if (s.mode === "specific_test" && s.specificTestCode) {
+      setSchedSpecificCode(s.specificTestCode);
+    }
+    if (s.mode === "subject_wise" && s.subject) {
+      setSchedSubject(s.subject);
+    }
+    setSchedShuffle(s.shuffleQuestions !== false);
+    setSchedQuestionCount(s.questionCount || 25);
+    setSchedTimePerQ(s.timePerQuestion || 30);
+    setSchedDailyTime(s.scheduledTime || "21:00");
+    setSchedTargetGroup(s.targetGroupId || "");
+    const formEl = document.getElementById("schedule-form-container");
+    if (formEl) formEl.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingScheduleId(null);
+    setSchedTitle("ડેઇલી મોક ટેસ્ટ");
+    setSchedMode("specific_test");
+    setSchedQuestionCount(25);
+    setSchedShuffle(true);
   };
 
   const handleDispatchNow = async (scheduleId: string) => {
@@ -1281,11 +1379,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 )}
 
                 {/* Schedule Creation Card */}
-                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-4 sm:p-6 space-y-4">
-                  <h5 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <Plus className="w-4 h-4 text-purple-600" />
-                    <span>નવું ડેઇલી મોક ટેસ્ટ શેડ્યુલ કન્ફિગર કરો</span>
-                  </h5>
+                <div
+                  id="schedule-form-container"
+                  className="bg-slate-50 border border-slate-200 rounded-3xl p-4 sm:p-6 space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                      {editingScheduleId ? (
+                        <>
+                          <Edit3 className="w-4 h-4 text-indigo-600" />
+                          <span>શેડ્યુલ એડિટ કરો (Edit Daily Schedule)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 text-purple-600" />
+                          <span>નવું ડેઇલી મોક ટેસ્ટ શેડ્યુલ કન્ફિગર કરો</span>
+                        </>
+                      )}
+                    </h5>
+                    {editingScheduleId && (
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="text-xs text-rose-600 hover:underline font-semibold"
+                      >
+                        ✕ રદ કરો (Cancel)
+                      </button>
+                    )}
+                  </div>
 
                   <form onSubmit={handleSaveSchedule} className="space-y-4 text-xs">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1298,7 +1419,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           type="text"
                           value={schedTitle}
                           onChange={(e) => setSchedTitle(e.target.value)}
-                          placeholder="દા.ત. ડેઇલી મેગા મોક ટેસ્ટ - GSRTC"
+                          placeholder="દા.ત. GUJARAT DISTRICT SPECIAL – [RAJKOT]"
                           required
                           className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
                         />
@@ -1306,51 +1427,76 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       {/* Daily Time */}
                       <div>
-                        <label className="block font-bold text-slate-700 mb-1">
-                          રોજ મોકલવાનો સમય (Daily Scheduled Time) *
+                        <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                          <span>રોજ મોકલવાનો સમય (Daily Time) *</span>
+                          <span className="text-[11px] font-mono text-purple-700 font-bold">
+                            {schedDailyTime} વાગ્યે
+                          </span>
                         </label>
-                        <input
-                          type="time"
-                          value={schedDailyTime}
-                          onChange={(e) => setSchedDailyTime(e.target.value)}
-                          required
-                          className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={schedDailyTime}
+                            onChange={(e) => setSchedDailyTime(e.target.value)}
+                            required
+                            className="px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                          />
+                          <div className="flex gap-1 flex-wrap">
+                            {["09:00", "13:00", "18:00", "21:00"].map((t) => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => setSchedDailyTime(t)}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                                  schedDailyTime === t
+                                    ? "bg-purple-600 text-white border-purple-600"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                                }`}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Mode Selection */}
+                    {/* Mode Selection (3 Modes) */}
                     <div>
                       <label className="block font-bold text-slate-700 mb-2">
                         પ્રશ્નો પસંદ કરવાનો મોડ (Question Source Mode) *
                       </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Option 1: Specific Test */}
                         <label
                           className={`p-3.5 rounded-2xl border cursor-pointer flex items-start gap-3 transition-all ${
-                            schedMode === "all_mixed"
-                              ? "bg-purple-50 border-purple-400 ring-2 ring-purple-400/30 text-purple-950 font-semibold"
+                            schedMode === "specific_test"
+                              ? "bg-indigo-50 border-indigo-500 ring-2 ring-indigo-400/30 text-indigo-950 font-semibold shadow-sm"
                               : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/50"
                           }`}
                         >
                           <input
                             type="radio"
                             name="sched_mode"
-                            checked={schedMode === "all_mixed"}
-                            onChange={() => setSchedMode("all_mixed")}
-                            className="mt-1 accent-purple-600"
+                            checked={schedMode === "specific_test"}
+                            onChange={() => setSchedMode("specific_test")}
+                            className="mt-1 accent-indigo-600"
                           />
                           <div>
-                            <div className="font-bold text-xs sm:text-sm">🎲 બધા જ પ્રશ્નોમાંથી મિક્સ (All Questions Mix)</div>
+                            <div className="font-bold text-xs sm:text-sm flex items-center gap-1">
+                              <span>🎯 ચોક્કસ ટેસ્ટ સિલેક્ટ કરો</span>
+                            </div>
                             <div className="text-[11px] text-slate-500 font-normal mt-0.5">
-                              સિસ્ટમમાં બનેલા તમામ ડિજિટલ પેપર્સમાંથી રેન્ડમ રીતે પ્રશ્નો પસંદ કરીને ટેસ્ટ તૈયાર કરશે. (પૂલ: {totalQuestions} પ્રશ્નો)
+                              બનાવેલા પેપર્સમાંથી કોઈ ચોક્કસ ટેસ્ટ (દા.ત. Rajkot, Jamnagar, Porbandar) પસંદ કરો.
                             </div>
                           </div>
                         </label>
 
+                        {/* Option 2: Subject Wise */}
                         <label
                           className={`p-3.5 rounded-2xl border cursor-pointer flex items-start gap-3 transition-all ${
                             schedMode === "subject_wise"
-                              ? "bg-purple-50 border-purple-400 ring-2 ring-purple-400/30 text-purple-950 font-semibold"
+                              ? "bg-purple-50 border-purple-500 ring-2 ring-purple-400/30 text-purple-950 font-semibold shadow-sm"
                               : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/50"
                           }`}
                         >
@@ -1362,16 +1508,122 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             className="mt-1 accent-purple-600"
                           />
                           <div>
-                            <div className="font-bold text-xs sm:text-sm">📚 વિષય વાઇઝ (Subject-Wise)</div>
+                            <div className="font-bold text-xs sm:text-sm">📚 વિષય / ટોપિક વાઇઝ</div>
                             <div className="text-[11px] text-slate-500 font-normal mt-0.5">
-                              કોઈ ચોક્કસ વિષય (દા.ત. ગુજરાતી વ્યાકરણ, GSRTC સ્પેશિયલ, કાયદો)માંથી જ પ્રશ્નો મોકલશે.
+                              ચોક્કસ વિષય (દા.ત. ગુજરાતી વ્યાકરણ, કાયદો, ઇતિહાસ)માંથી પ્રશ્નો મોકલશે.
+                            </div>
+                          </div>
+                        </label>
+
+                        {/* Option 3: All Mixed */}
+                        <label
+                          className={`p-3.5 rounded-2xl border cursor-pointer flex items-start gap-3 transition-all ${
+                            schedMode === "all_mixed"
+                              ? "bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400/30 text-emerald-950 font-semibold shadow-sm"
+                              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="sched_mode"
+                            checked={schedMode === "all_mixed"}
+                            onChange={() => setSchedMode("all_mixed")}
+                            className="mt-1 accent-emerald-600"
+                          />
+                          <div>
+                            <div className="font-bold text-xs sm:text-sm">🎲 બધા જ પ્રશ્નોમાંથી મિક્સ</div>
+                            <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                              તમામ પેપર્સમાંથી મિક્સ પ્રશ્નોની ગ્રાન્ડ મોક ટેસ્ટ. (પૂલ: {totalQuestions} પ્રશ્નો)
                             </div>
                           </div>
                         </label>
                       </div>
                     </div>
 
-                    {/* Subject Dropdown (if subject_wise) */}
+                    {/* Mode 1: Specific Test Selection View */}
+                    {schedMode === "specific_test" && (
+                      <div className="p-4 bg-white rounded-2xl border border-indigo-200 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="block font-bold text-indigo-950 text-xs sm:text-sm">
+                            કયા પેપર / ટેસ્ટમાંથી પ્રશ્નો મોકલવા છે? * ({availableTests.length} ટેસ્ટ્સ ઉપલબ્ધ)
+                          </label>
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                            <input
+                              type="text"
+                              value={testSearchFilter}
+                              onChange={(e) => setTestSearchFilter(e.target.value)}
+                              placeholder="ટેસ્ટ શોધો (રાજકોટ, Jamnagar, TEST-1062)..."
+                              className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 text-xs w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </div>
+
+                        {availableTests.length === 0 ? (
+                          <p className="text-slate-400 text-xs italic">
+                            કોઈ ટેસ્ટ મળ્યો નથી. પહેલા ટેસ્ટ્સ બનાવો અથવા ડિજિટાઇઝ કરો.
+                          </p>
+                        ) : (
+                          <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                            {availableTests
+                              .filter((t) => {
+                                if (!testSearchFilter) return true;
+                                const q = testSearchFilter.toLowerCase();
+                                return (
+                                  t.title?.toLowerCase().includes(q) ||
+                                  t.testCode?.toLowerCase().includes(q) ||
+                                  t.subject?.toLowerCase().includes(q)
+                                );
+                              })
+                              .map((t) => {
+                                const code = t.testCode || t.id;
+                                const isSelected =
+                                  schedSpecificCode.toUpperCase() === code.toUpperCase();
+                                const qCount = t.questions?.length || 0;
+                                return (
+                                  <div
+                                    key={t.id || t.testCode}
+                                    onClick={() => {
+                                      setSchedSpecificCode(code);
+                                      if (!editingScheduleId) {
+                                        setSchedTitle(`${t.title} (Daily Mock)`);
+                                      }
+                                    }}
+                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
+                                      isSelected
+                                        ? "bg-indigo-50/90 border-indigo-500 ring-2 ring-indigo-400/30 text-indigo-950 shadow-sm"
+                                        : "bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700"
+                                    }`}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">
+                                          {t.testCode || "TEST"}
+                                        </span>
+                                        <span className="font-bold text-xs truncate">
+                                          {t.title}
+                                        </span>
+                                      </div>
+                                      {t.subject && (
+                                        <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                          {t.subject}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                      <span className="inline-block text-xs font-black font-mono px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        {qCount} MCQs
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Mode 2: Subject Dropdown (if subject_wise) */}
                     {schedMode === "subject_wise" && (
                       <div className="p-3.5 bg-white rounded-2xl border border-purple-200 space-y-1.5">
                         <label className="block font-bold text-purple-950">
@@ -1385,7 +1637,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {availableSubjects.map((subj) => {
                               const qCount = getSubjectQuestionCount(subj);
-                              const isSelected = schedSubject === subj || (!schedSubject && subj === availableSubjects[0]);
+                              const isSelected =
+                                schedSubject === subj ||
+                                (!schedSubject && subj === availableSubjects[0]);
                               return (
                                 <button
                                   type="button"
@@ -1409,26 +1663,136 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {/* Questions Count */}
+                    {/* Advanced Question Count & Shuffle Settings */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-white rounded-2xl border border-slate-200">
+                      {/* Question Count */}
                       <div>
-                        <label className="block font-bold text-slate-700 mb-1">
-                          ટેસ્ટમાં કેટલા પ્રશ્નો રાખવા?
-                        </label>
-                        <select
-                          value={schedQuestionCount}
-                          onChange={(e) => setSchedQuestionCount(Number(e.target.value))}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-800"
-                        >
-                          <option value={10}>૧૦ પ્રશ્નો (Quick Quiz)</option>
-                          <option value={20}>૨૦ પ્રશ્નો</option>
-                          <option value={30}>૩૦ પ્રશ્નો</option>
-                          <option value={50}>૫૦ પ્રશ્નો (Standard)</option>
-                          <option value={60}>૬૦ પ્રશ્નો (Duo/Grammar)</option>
-                          <option value={100}>૧૦૦ પ્રશ્નો (Mega Mock)</option>
-                        </select>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="font-bold text-slate-800 text-xs">
+                            ટેસ્ટમાં કેટલા પ્રશ્નો રાખવા? (Question Count) *
+                          </label>
+                          <span className="text-[11px] font-mono font-bold text-purple-700">
+                            {schedQuestionCount} MCQs પસંદ
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={500}
+                            value={schedQuestionCount || ""}
+                            onChange={(e) =>
+                              setSchedQuestionCount(Math.max(1, Number(e.target.value)))
+                            }
+                            className="w-24 px-3 py-2 rounded-xl border border-slate-300 font-bold font-mono text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 text-center text-sm"
+                          />
+                          <div className="flex items-center gap-1 flex-wrap flex-1">
+                            {[10, 15, 20, 25, 30, 50].map((count) => (
+                              <button
+                                key={count}
+                                type="button"
+                                onClick={() => setSchedQuestionCount(count)}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                                  schedQuestionCount === count
+                                    ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                                    : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                                }`}
+                              >
+                                {count}
+                              </button>
+                            ))}
+                            {schedMode === "specific_test" && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sel = availableTests.find(
+                                    (t) =>
+                                      (t.testCode || t.id).toUpperCase() ===
+                                      schedSpecificCode.toUpperCase()
+                                  );
+                                  if (sel && sel.questions?.length) {
+                                    setSchedQuestionCount(sel.questions.length);
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                              >
+                                બધા ({availableTests.find(
+                                  (t) =>
+                                    (t.testCode || t.id).toUpperCase() ===
+                                    schedSpecificCode.toUpperCase()
+                                )?.questions?.length || "All"})
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          દા.ત. ૧૨૦ કે ૨૩૪ પ્રશ્નોમાંથી ગ્રૂપમાં ૧૫ કે ૨૫ પ્રશ્નોનો મોક ટેસ્ટ મોકલવો હોય તો અહીં સંખ્યા સેટ કરો.
+                        </p>
                       </div>
 
+                      {/* Shuffle Questions Option */}
+                      <div>
+                        <label className="block font-bold text-slate-800 text-xs mb-1.5">
+                          પ્રશ્નો શફલ (Shuffle / Randomize) કરવા કે નહીં? *
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label
+                            className={`p-2.5 rounded-xl border cursor-pointer flex items-center gap-2 transition-all ${
+                              schedShuffle
+                                ? "bg-indigo-50 border-indigo-400 ring-2 ring-indigo-400/20 text-indigo-950 font-bold"
+                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="sched_shuffle"
+                              checked={schedShuffle}
+                              onChange={() => setSchedShuffle(true)}
+                              className="accent-indigo-600"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1 text-xs">
+                                <Shuffle className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>🔀 શફલ (Random)</span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-normal">
+                                રેન્ડમ પસંદ થશે
+                              </div>
+                            </div>
+                          </label>
+
+                          <label
+                            className={`p-2.5 rounded-xl border cursor-pointer flex items-center gap-2 transition-all ${
+                              !schedShuffle
+                                ? "bg-indigo-50 border-indigo-400 ring-2 ring-indigo-400/20 text-indigo-950 font-bold"
+                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="sched_shuffle"
+                              checked={!schedShuffle}
+                              onChange={() => setSchedShuffle(false)}
+                              className="accent-indigo-600"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1 text-xs">
+                                <ListOrdered className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>🔢 ક્રમ અનુસાર (1 to N)</span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-normal">
+                                પહેલા પ્રશ્નથી ક્રમમાં
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          ક્રમ અનુસાર પસંદ કરવાથી હંમેશા પેપરના ૧ થી N સુધીના પ્રશ્નો ક્રમવાર રહેશે.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* Time per Question */}
                       <div>
                         <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
@@ -1474,19 +1838,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           type="text"
                           value={schedTargetGroup}
                           onChange={(e) => setSchedTargetGroup(e.target.value)}
-                          placeholder={botConfig.targetGroupId || "@gsrtc_group"}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-800 bg-white"
+                          placeholder={botConfig.targetGroupId || "@gsrtc_group (ખાલી રાખશો તો ડિફોલ્ટ ગ્રૂપ)"}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-800 bg-white text-xs"
                         />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          જો કોઈ ચોક્કસ ગ્રૂપમાં જ મોકલવો હોય તો Chat ID દાખલ કરો.
+                        </p>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-end gap-2 pt-2">
+                      {editingScheduleId && (
+                        <button
+                          type="button"
+                          onClick={handleCancelEdit}
+                          className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition-all"
+                        >
+                          રદ કરો (Cancel)
+                        </button>
+                      )}
                       <button
                         type="submit"
-                        className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 flex items-center gap-1.5 transition-all"
+                        className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 flex items-center gap-1.5 transition-all"
                       >
                         <Check className="w-4 h-4" />
-                        <span>શેડ્યુલ સેવ કરો (Save Daily Schedule)</span>
+                        <span>
+                          {editingScheduleId
+                            ? "શેડ્યુલ અપડેટ કરો (Update Schedule)"
+                            : "શેડ્યુલ સેવ કરો (Save Daily Schedule)"}
+                        </span>
                       </button>
                     </div>
                   </form>
@@ -1494,9 +1874,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 {/* Existing Schedules Table */}
                 <div className="space-y-3">
-                  <h5 className="font-bold text-slate-900 text-sm">
-                    હાલના સક્રિય શેડ્યુલ્સ ({scheduledTests.length})
-                  </h5>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h5 className="font-bold text-slate-900 text-sm">
+                        હાલના સક્રિય શેડ્યુલ્સ ({scheduledTests.length})
+                      </h5>
+                      <p className="text-[11px] text-slate-500">
+                        તમે અલગ અલગ સમય માટે મલ્ટિપલ ડેઇલી શેડ્યુલ્સ (દા.ત. સવારે 9:00, બપોરે 2:00, રાત્રે 9:00) સેટ કરી શકો છો.
+                      </p>
+                    </div>
+                  </div>
 
                   {scheduledTests.length === 0 ? (
                     <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-xs">
@@ -1507,38 +1894,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {scheduledTests.map((s) => (
                         <div
                           key={s.id}
-                          className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                          className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-slate-300 transition-all"
                         >
-                          <div>
-                            <div className="flex items-center gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-slate-900 text-sm">{s.title}</span>
                               <span
                                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                  s.mode === "subject_wise"
-                                    ? "bg-indigo-100 text-indigo-800"
-                                    : "bg-purple-100 text-purple-800"
+                                  s.mode === "specific_test"
+                                    ? "bg-sky-100 text-sky-800 border border-sky-200"
+                                    : s.mode === "subject_wise"
+                                    ? "bg-indigo-100 text-indigo-800 border border-indigo-200"
+                                    : "bg-purple-100 text-purple-800 border border-purple-200"
                                 }`}
                               >
-                                {s.mode === "subject_wise" ? `વિષય: ${s.subject}` : "બધા પ્રશ્નો મિક્સ"}
+                                {s.mode === "specific_test"
+                                  ? `🎯 ટેસ્ટ: ${s.specificTestCode || "Specific"}`
+                                  : s.mode === "subject_wise"
+                                  ? `📚 વિષય: ${s.subject}`
+                                  : "🎲 બધા પ્રશ્નો મિક્સ"}
+                              </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                {s.shuffleQuestions !== false ? "🔀 શફલ" : "🔢 ક્રમ અનુસાર"}
                               </span>
                               <span
                                 onClick={() => handleToggleScheduleActive(s)}
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer ${
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer transition-colors ${
                                   s.isActive
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : "bg-slate-100 text-slate-500"
+                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
+                                    : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
                                 }`}
+                                title="ક્લિક કરીને સક્રિય/થોભાવો"
                               >
                                 {s.isActive ? "● સક્રિય (Daily Active)" : "○ થોભાવેલ (Paused)"}
                               </span>
                             </div>
 
-                            <div className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
+                            <div className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
                               <span>⏰ સમય: <strong>રોજ {s.scheduledTime} વાગ્યે</strong></span>
                               <span>•</span>
                               <span>📊 <strong>{s.questionCount} MCQs</strong></span>
                               <span>•</span>
                               <span>⏱ <strong>{s.timePerQuestion} સે./પ્રશ્ન</strong></span>
+                              {s.targetGroupId && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-slate-600">
+                                    ગ્રૂપ: {s.targetGroupId}
+                                  </span>
+                                </>
+                              )}
                               {s.lastGeneratedCode && (
                                 <>
                                   <span>•</span>
@@ -1555,14 +1960,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               onClick={() => handleDispatchNow(s.id)}
                               disabled={dispatchingId === s.id}
                               className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all disabled:opacity-50"
+                              title="તરત જ આ ટેસ્ટ ગ્રૂપમાં મોકલો"
                             >
                               <Send className="w-3.5 h-3.5" />
                               <span>{dispatchingId === s.id ? "મોકલાઈ રહ્યું છે..." : "હમણાં જ ક્વિઝ મોકલો"}</span>
                             </button>
 
                             <button
+                              onClick={() => handleEditSchedule(s)}
+                              className="p-2 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-colors"
+                              title="એડિટ કરો"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
                               onClick={() => handleDeleteSchedule(s.id)}
-                              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200"
+                              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors"
                               title="ડિલીટ કરો"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
