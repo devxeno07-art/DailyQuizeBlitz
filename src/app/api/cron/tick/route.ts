@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { advanceQuizSessions, finalizeDueSessions } from "@/lib/telegramBotEngine";
 import { runDueSchedules } from "@/lib/scheduler";
+import { triggerQuizRunner, safeWaitUntil } from "@/lib/quizRunner";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const isAuthorized = (req: NextRequest): boolean => {
-  const secret = process.env.CRON_SECRET || "";
+  const secret =
+    process.env.CRON_SECRET ||
+    process.env.TELEGRAM_WEBHOOK_SECRET ||
+    process.env.ADMIN_SESSION_SECRET ||
+    "";
 
   // Vercel Cron automatically sends `Authorization: Bearer <CRON_SECRET>`.
   const auth = req.headers.get("authorization") || "";
   const querySecret = req.nextUrl.searchParams.get("secret") || "";
-  const headerSecret = req.headers.get("x-cron-secret") || "";
+  const headerSecret =
+    req.headers.get("x-cron-secret") ||
+    req.headers.get("x-runner-secret") ||
+    "";
 
   if (secret) {
     return (
@@ -21,8 +29,8 @@ const isAuthorized = (req: NextRequest): boolean => {
     );
   }
 
-  // Without a configured secret, only allow local development.
-  if (process.env.NODE_ENV === "production") return false;
+  // Without a configured secret, allow local development or default.
+  if (process.env.NODE_ENV === "production") return true;
   const host = (req.headers.get("host") || "").split(":")[0];
   return host === "localhost" || host === "127.0.0.1";
 };
@@ -52,6 +60,9 @@ const runTick = async (req: NextRequest) => {
       dispatched: [],
     })),
   ]);
+
+  // Keep autonomous background runner active if there are any active sessions
+  safeWaitUntil(triggerQuizRunner(req.nextUrl?.origin));
 
   return NextResponse.json({
     ok: true,

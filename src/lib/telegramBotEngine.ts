@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { generateTop3Banner } from "./bannerGenerator";
+import { triggerQuizRunner } from "./quizRunner";
 import {
   TelegramBotConfig,
   TelegramParticipant,
@@ -303,6 +304,7 @@ export const setupTelegramWebhook = async (
       "channel_post",
       "callback_query",
       "poll_answer",
+      "poll",
     ],
     drop_pending_updates: false,
   });
@@ -840,6 +842,9 @@ const startQuizSession = async (
     );
     return { ok: false, session, error: session.error };
   }
+
+  // Trigger the background runner to post subsequent questions when due
+  triggerQuizRunner(ctx.configuredAppUrl).catch(() => {});
 
   return { ok: true, session };
 };

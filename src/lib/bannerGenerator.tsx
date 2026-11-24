@@ -637,7 +637,7 @@ export const generateTop3Banner = async (
                     letterSpacing: "1.5px",
                   }}
                 >
-                  ★ TOP RANKER ★
+                  TOP RANKER
                 </span>
               </div>
               <div

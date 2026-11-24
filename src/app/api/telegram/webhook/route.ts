@@ -5,9 +5,10 @@ import {
 } from "@/lib/telegramBotEngine";
 import { getServerBotConfig } from "@/lib/serverStorage";
 import { kvGetJson, kvSetJson, withKeyLock } from "@/lib/kvStore";
+import { triggerQuizRunner, safeWaitUntil } from "@/lib/quizRunner";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const DEDUPE_KEY = "webhook_updates.json";
 const DEDUPE_LIMIT = 500;
@@ -81,13 +82,16 @@ export async function POST(req: NextRequest) {
 
     const hostOrigin = req.nextUrl?.origin;
     const result = await processTelegramUpdate(update, hostOrigin);
-    // Webhook deployments have no 1-second poll loop, so advance any quiz
-    // whose timer elapsed while this update was being handled. A frequent
-    // external cron tick is still required when nobody is answering.
+    
+    // Immediate poll advancement check if any session was already due
     const advanced = await advanceQuizSessions().catch(() => ({
       sent: 0,
       errors: [],
     }));
+
+    // Trigger or continue the autonomous background runner on Fluid Compute
+    safeWaitUntil(triggerQuizRunner(hostOrigin));
+
     return NextResponse.json({
       ok: true,
       result,
