@@ -56,9 +56,8 @@ const getMaxQuestionsPerRun = (): number => {
 };
 
 const MAX_QUESTIONS_PER_RUN = getMaxQuestionsPerRun();
-// Small grace period after a poll's open_period before the next question is
-// posted. Keeps a short visible gap instead of overlapping two questions.
-const NEXT_POLL_GRACE_MS = 1200;
+// High-speed, instant next-question transition grace period (100ms)
+export const NEXT_POLL_GRACE_MS = 100;
 
 // ==========================================
 // Small helpers
@@ -575,11 +574,11 @@ export const finalizeDueSessions = async (): Promise<number> => {
   return finalized;
 };
 
-const getSessionTimePerQuestion = (
+export const getSessionTimePerQuestion = (
   session: TelegramQuizSession
 ): number =>
   Math.max(
-    10,
+    5,
     Math.min(600, Number(session.quiz?.timePerQuestion) || 30)
   );
 
@@ -636,9 +635,9 @@ const sendPollForQuestion = async (
     messageId: result.result.message_id,
     sentAt: sentAt.toISOString(),
   });
-  // The final leaderboard may only go out once this poll's timer has closed.
+  // The final leaderboard goes out quickly after the final poll closes (1s grace)
   session.finalizeAt = new Date(
-    sentAt.getTime() + timePerQuestion * 1000 + 5000
+    sentAt.getTime() + timePerQuestion * 1000 + 1000
   ).toISOString();
   session.status = "active";
   await saveSession(session);
