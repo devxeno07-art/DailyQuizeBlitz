@@ -985,24 +985,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     <div className={wrapperClass}>
       <div className={containerClass}>
         {/* Top Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-brand-950 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400">
+        <div className="px-3.5 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-brand-950 text-white flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shrink-0">
               <ShieldCheck className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-bold text-base leading-tight">એડમિન પેનલ (Admin Control Center)</h3>
-              <p className="text-[11px] text-slate-400">
+            <div className="min-w-0">
+              <h3 className="font-bold text-sm sm:text-base leading-tight truncate">એડમિન પેનલ (Admin Control)</h3>
+              <p className="text-[11px] text-slate-400 truncate hidden sm:block">
                 યુઝર્સ ટ્રેકિંગ અને ઓલ્ડ પેપર્સ ડિજિટાઇઝેશન મોનિટરિંગ
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             {isAuthenticated && (
               <button
                 onClick={() => setShowConfigModal(true)}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors"
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors shrink-0"
                 title="Cloud Database Settings"
               >
                 <Settings className="w-4 h-4" />
@@ -1011,7 +1011,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {isAuthenticated && (
               <button
                 onClick={handleLogout}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-500/30 text-slate-300 hover:text-white transition-colors"
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-rose-500/30 text-slate-300 hover:text-white flex items-center justify-center transition-colors shrink-0"
                 title="Logout"
               >
                 <LogOut className="w-4 h-4" />
@@ -1020,15 +1020,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {standalone ? (
               <a
                 href="/"
-                className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white text-xs font-bold transition-colors"
+                className="inline-flex items-center justify-center gap-1 h-9 px-2.5 sm:px-3 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white text-xs font-bold transition-colors shrink-0"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>મુખ્ય પેજ</span>
+                <span className="hidden sm:inline">મુખ્ય પેજ</span>
               </a>
             ) : (
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg hover:bg-white/20 text-slate-400 hover:text-white transition-colors"
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors shrink-0"
+                title="બંધ કરો"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1160,53 +1161,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             )}
 
             {/* Admin Tabs */}
-            <div className="flex border-b border-slate-200 space-x-2 sm:space-x-4 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1.5 pb-2 border-b border-slate-200 overflow-x-auto no-scrollbar">
               <button
                 onClick={() => setActiveTab("users")}
-                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                className={`h-9 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 ${
                   activeTab === "users"
-                    ? "border-brand-600 text-brand-700"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
+                    ? "bg-brand-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>યુઝર્સ & પેપર્સ ({users.length})</span>
+                <span>યુઝર્સ ({users.length})</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("digitization")}
-                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                className={`h-9 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 ${
                   activeTab === "digitization"
-                    ? "border-orange-600 text-orange-700"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
+                    ? "bg-orange-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
                 }`}
               >
                 <FileDown className="w-4 h-4" />
-                <span>ઓલ્ડ પેપર્સ ટ્રેકર ({sourcePapers.length})</span>
+                <span>પેપર્સ ટ્રેકર ({sourcePapers.length})</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("scheduler")}
-                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                className={`h-9 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 ${
                   activeTab === "scheduler"
-                    ? "border-purple-600 text-purple-700"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
                 }`}
               >
                 <Calendar className="w-4 h-4" />
-                <span>📅 ડેઇલી મોક ટેસ્ટ શેડ્યુલર</span>
+                <span>📅 શેડ્યુલર</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("bot_config")}
-                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                className={`h-9 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 ${
                   activeTab === "bot_config"
-                    ? "border-sky-600 text-sky-700"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
                 }`}
               >
                 <Bot className="w-4 h-4" />
-                <span>🤖 ટેલિગ્રામ બોટ સેટિંગ્સ</span>
+                <span>🤖 બોટ સેટિંગ્સ</span>
               </button>
 
               <button
@@ -1214,14 +1215,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   setActiveTab("database");
                   fetchSupabaseStatus();
                 }}
-                className={`pb-2.5 text-xs sm:text-sm font-bold flex items-center space-x-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                className={`h-9 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 ${
                   activeTab === "database"
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
                 }`}
               >
                 <Database className="w-4 h-4" />
-                <span>🗄️ Supabase ડેટાબેઝ &amp; પાસવર્ડ</span>
+                <span>🗄️ ડેટાબેઝ</span>
               </button>
             </div>
 
@@ -1341,58 +1342,60 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto text-xs flex-wrap">
-                              <div className="text-left sm:text-right mr-1">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto text-xs">
+                              <div className="text-left sm:text-right sm:mr-1 flex sm:block items-center justify-between gap-2">
                                 <div className="font-bold text-indigo-700">
                                   {u.papersCount || 0} પેપર્સ • {u.questionsCount || 0} પ્રશ્નો
                                 </div>
                                 <div className="text-[11px] text-slate-400">
-                                  છેલ્લે સક્રિય: {formatDate(u.lastActive)}
+                                  {formatDate(u.lastActive)}
                                 </div>
                               </div>
 
-                              {/* Toggle Library Access */}
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  await toggleUserLibraryAccess(u.id);
-                                  setUsers((prev) =>
-                                    prev.map((user) =>
-                                      user.id === u.id ? { ...user, hasLibraryAccess: !user.hasLibraryAccess } : user
-                                    )
-                                  );
-                                }}
-                                className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all ${
-                                  u.hasLibraryAccess
-                                    ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-                                    : "bg-slate-100 border-slate-300 text-slate-600 hover:bg-slate-200"
-                                }`}
-                                title={
-                                  u.hasLibraryAccess
-                                    ? "ઓરિજિનલ પેપર્સ લાઇબ્રેરી મંજૂર છે (ક્લિક કરી રદ કરો)"
-                                    : "ઓરિજિનલ પેપર્સ લાઇબ્રેરી એક્સેસ આપો"
-                                }
-                              >
-                                {u.hasLibraryAccess ? (
-                                  <>
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>લાઇબ્રેરી મંજૂર (Active)</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                                    <span>લાઇબ્રેરી આપો (Grant)</span>
-                                  </>
-                                )}
-                              </button>
+                              <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+                                {/* Toggle Library Access */}
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await toggleUserLibraryAccess(u.id);
+                                    setUsers((prev) =>
+                                      prev.map((user) =>
+                                        user.id === u.id ? { ...user, hasLibraryAccess: !user.hasLibraryAccess } : user
+                                      )
+                                    );
+                                  }}
+                                  className={`h-9 px-3 rounded-xl border text-xs font-bold shadow-sm inline-flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
+                                    u.hasLibraryAccess
+                                      ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                                      : "bg-slate-100 border-slate-300 text-slate-600 hover:bg-slate-200"
+                                  }`}
+                                  title={
+                                    u.hasLibraryAccess
+                                      ? "ઓરિજિનલ પેપર્સ લાઇબ્રેરી મંજૂર છે (ક્લિક કરી રદ કરો)"
+                                      : "ઓરિજિનલ પેપર્સ લાઇબ્રેરી એક્સેસ આપો"
+                                  }
+                                >
+                                  {u.hasLibraryAccess ? (
+                                    <>
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                      <span className="truncate">લાઇબ્રેરી મંજૂર</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                      <span className="truncate">લાઇબ્રેરી આપો</span>
+                                    </>
+                                  )}
+                                </button>
 
-                              <button
-                                onClick={() => setSelectedUser(u)}
-                                className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 border border-slate-200 text-indigo-700 font-bold text-xs shadow-sm flex items-center gap-1"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>પેપર્સ જુઓ</span>
-                              </button>
+                                <button
+                                  onClick={() => setSelectedUser(u)}
+                                  className="h-9 px-3 rounded-xl bg-white hover:bg-indigo-50 border border-slate-200 text-indigo-700 font-bold text-xs shadow-sm inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+                                >
+                                  <Eye className="w-3.5 h-3.5 shrink-0" />
+                                  <span>પેપર્સ જુઓ</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1773,7 +1776,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         setSchedTitle(`${t.title} (Daily Mock)`);
                                       }
                                     }}
-                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
+                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
                                       isSelected
                                         ? "bg-indigo-50/90 border-indigo-500 ring-2 ring-indigo-400/30 text-indigo-950 shadow-sm"
                                         : "bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700"
@@ -1781,7 +1784,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   >
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">
+                                        <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200 shrink-0">
                                           {t.testCode || "TEST"}
                                         </span>
                                         <span className="font-bold text-xs truncate">
@@ -1794,20 +1797,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         </p>
                                       )}
                                     </div>
-                                    <div className="text-right flex-shrink-0 flex items-center gap-2">
+                                    <div className="flex-shrink-0 flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                                       <button
                                         type="button"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handleOpenSetManager(t);
                                         }}
-                                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-xs flex items-center gap-1 transition-all"
+                                        className="h-9 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs inline-flex items-center justify-center gap-1.5 transition-all flex-1 sm:flex-none"
                                         title="આ ટેસ્ટને 30/40/50 ના અલગ સેટ્સમાં વહેંચો અને મોકલો"
                                       >
-                                        <Layers className="w-3 h-3" />
+                                        <Layers className="w-3.5 h-3.5 shrink-0" />
                                         <span>સેટ્સમાં વહેંચો</span>
                                       </button>
-                                      <span className="inline-block text-xs font-black font-mono px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      <span className="h-9 px-2.5 inline-flex items-center justify-center text-xs font-black font-mono rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                                         {qCount} MCQs
                                       </span>
                                     </div>
@@ -2617,31 +2620,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end pt-1 sm:pt-0">
                             <button
                               onClick={() => handleDispatchNow(s.id)}
                               disabled={dispatchingId === s.id}
-                              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all disabled:opacity-50"
+                              className="flex-1 sm:flex-none h-10 px-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm inline-flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
                               title="તરત જ આ ટેસ્ટ ગ્રૂપમાં મોકલો"
                             >
-                              <Send className="w-3.5 h-3.5" />
-                              <span>{dispatchingId === s.id ? "મોકલાઈ રહ્યું છે..." : "હમણાં જ ક્વિઝ મોકલો"}</span>
+                              <Send className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{dispatchingId === s.id ? "મોકલાઈ રહ્યું છે..." : "હમણાં જ ક્વિઝ મોકલો"}</span>
                             </button>
 
                             <button
                               onClick={() => handleEditSchedule(s)}
-                              className="p-2 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-colors"
+                              className="w-10 h-10 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 flex items-center justify-center transition-colors shrink-0"
                               title="એડિટ કરો"
                             >
-                              <Edit3 className="w-3.5 h-3.5" />
+                              <Edit3 className="w-4 h-4" />
                             </button>
 
                             <button
                               onClick={() => handleDeleteSchedule(s.id)}
-                              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors"
+                              className="w-10 h-10 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 flex items-center justify-center transition-colors shrink-0"
                               title="ડિલીટ કરો"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </div>

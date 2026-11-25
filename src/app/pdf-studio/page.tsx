@@ -504,58 +504,58 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
       />
 
       {/* ================= STUDIO CONTROL PANEL (NO-PRINT) ================= */}
-      <div className="no-print max-w-5xl mx-auto pt-6 px-4">
+      <div className="no-print max-w-5xl mx-auto pt-3 sm:pt-6 px-3 sm:px-4">
         <div className="bg-white rounded-2xl border border-slate-300 shadow-xl overflow-hidden mb-6">
           {/* Topbar */}
-          <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white p-3.5 sm:p-5 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
               <Link
                 href="/"
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white"
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white shrink-0"
                 title="Back to Dashboard"
               >
                 <ArrowLeft className="w-5 h-5" />
               </Link>
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30 text-slate-950 font-black">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30 text-slate-950 font-black shrink-0">
                 <FileText className="w-5 h-5 text-slate-950" />
               </div>
-              <div>
-                <h1 className="text-base sm:text-lg font-extrabold tracking-tight">
+              <div className="min-w-0">
+                <h1 className="text-sm sm:text-lg font-extrabold tracking-tight truncate">
                   Branded MCQ to PDF Studio
                 </h1>
-                <p className="text-xs text-blue-200">
+                <p className="text-[11px] sm:text-xs text-blue-200 truncate">
                   હાઇ-ક્વોલિટી A4 વોટરમાર્ક પ્રશ્નપત્ર જનરેટર
                 </p>
               </div>
             </div>
 
             {/* Stat Pills */}
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-semibold">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="h-7 px-2.5 inline-flex items-center rounded-full bg-white/10 border border-white/20 text-[11px] sm:text-xs font-semibold">
                 પ્રશ્નો: {stats.total}
               </span>
-              <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-semibold">
+              <span className="hidden sm:inline-flex h-7 px-3 items-center rounded-full bg-white/10 border border-white/20 text-xs font-semibold">
                 {stats.dist}
               </span>
             </div>
           </div>
 
           {/* Form Body */}
-          <div className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
+          <div className="p-3.5 sm:p-6 space-y-4 text-xs sm:text-sm">
             {/* Quick Test / Paper Loader Bar */}
-            <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-blue-50 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
                 <span className="font-bold text-blue-900 flex items-center gap-1.5">
-                  <Bot className="w-4 h-4 text-blue-600" />
+                  <Bot className="w-4 h-4 text-blue-600 shrink-0" />
                   <span>ટેલિગ્રામ ટેસ્ટ કોડથી લોડ કરો:</span>
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <input
                     type="text"
                     value={quizCodeInput}
                     onChange={(e) => setQuizCodeInput(e.target.value)}
                     placeholder="દા.ત. GSRTC-1234"
-                    className="w-32 sm:w-36 px-2.5 py-1.5 rounded-lg border border-blue-300 font-mono font-bold text-xs uppercase bg-white text-slate-800 focus:outline-none focus:border-blue-600"
+                    className="flex-1 sm:w-36 h-9 px-3 rounded-xl border border-blue-300 font-mono font-bold text-xs uppercase bg-white text-slate-800 focus:outline-none focus:border-blue-600"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") loadTelegramQuizByCode(quizCodeInput);
                     }}
@@ -564,7 +564,7 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
                     type="button"
                     onClick={() => loadTelegramQuizByCode(quizCodeInput)}
                     disabled={isLoadingQuiz || !quizCodeInput.trim()}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold flex items-center gap-1 transition-colors shadow-sm"
+                    className="h-9 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold inline-flex items-center justify-center gap-1.5 transition-colors shadow-sm shrink-0"
                   >
                     {isLoadingQuiz ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                     <span>{isLoadingQuiz ? "..." : "લોડ"}</span>
@@ -573,8 +573,8 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
               </div>
 
               {((papers && papers.length > 0) || (communityPapers && communityPapers.length > 0)) && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-700 flex items-center gap-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                  <span className="font-bold text-slate-700 flex items-center gap-1 shrink-0">
                     <FileText className="w-3.5 h-3.5 text-slate-500" />
                     <span>પેપર લિસ્ટમાંથી પસંદ કરો:</span>
                   </span>
@@ -583,7 +583,7 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
                       if (e.target.value) loadPaperById(e.target.value);
                     }}
                     defaultValue=""
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none max-w-xs sm:max-w-sm truncate"
+                    className="w-full sm:w-auto h-9 px-3 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none sm:max-w-xs truncate"
                   >
                     <option value="" disabled>-- પેપર સિલેક્ટ કરો --</option>
                     {papers && papers.length > 0 && (
@@ -734,20 +734,20 @@ Exp: મહારાજા સયાજીરાવ ગાયકવાડ ત્
             </div>
 
             {/* Actions Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2">
+              <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={handlePrint}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/25 transition-all"
+                  className="h-10 px-4 sm:px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm inline-flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all"
                 >
-                  <Printer className="w-4 h-4" />
-                  <span>Save Branded PDF (Print)</span>
+                  <Printer className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Save PDF</span>
                 </button>
                 <button
                   onClick={() => setRawText("")}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm flex items-center gap-1.5 transition-colors"
+                  className="h-10 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm inline-flex items-center justify-center gap-1.5 transition-colors"
                 >
-                  <Trash2 className="w-4 h-4 text-slate-500" />
+                  <Trash2 className="w-4 h-4 text-slate-500 shrink-0" />
                   <span>સાફ કરો</span>
                 </button>
               </div>

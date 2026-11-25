@@ -141,7 +141,8 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="w-9 h-9 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center transition-colors shrink-0"
+              title="બંધ કરો"
             >
               <X className="w-5 h-5" />
             </button>
@@ -167,28 +168,28 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-5 py-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between flex-wrap gap-2">
+        <div className="px-4 sm:px-5 py-3 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="text-xs text-slate-400">
             કુલ {paper.questions?.length || 0} પ્રશ્નો • કોડ: <span className="font-mono text-sky-400 font-bold">{paper.testCode || "-"}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className={`grid ${onTakeTest ? "grid-cols-2" : "grid-cols-1"} sm:flex items-center gap-2 w-full sm:w-auto`}>
             {onTakeTest && (
               <button
                 onClick={() => {
                   onClose();
                   onTakeTest(paper);
                 }}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all"
+                className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all"
               >
-                <PlayCircle className="w-4 h-4" />
-                <span>ટેસ્ટ આપો (Take Test)</span>
+                <PlayCircle className="w-4 h-4 shrink-0" />
+                <span className="truncate">ટેસ્ટ આપો</span>
               </button>
             )}
 
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold"
+              className="h-10 px-4 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold inline-flex items-center justify-center"
             >
               બંધ કરો
             </button>

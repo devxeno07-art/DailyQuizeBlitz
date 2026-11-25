@@ -468,79 +468,77 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
           </div>
         )}
 
-        {/* Row 3: Action Buttons Bar */}
-        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-          {/* 1. Take Test (Primary Emerald Button) */}
-          <button
-            onClick={() => onTakeTest({ ...currentPaper, questions })}
-            disabled={questions.length === 0}
-            className="flex-1 min-w-[85px] sm:flex-initial flex items-center justify-center space-x-1 px-3 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
-          >
-            <PlayCircle className="w-3.5 h-3.5" />
-            <span>ટેસ્ટ આપો</span>
-          </button>
-
-          {/* 2. Telegram Bot code trigger */}
-          <button
-            onClick={() => onOpenTelegram?.({ ...currentPaper, questions })}
-            className="flex-1 min-w-[85px] sm:flex-initial flex items-center justify-center space-x-1 px-3 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold text-xs shadow-sm transition-all"
-            title="આ ટેસ્ટ ટેલિગ્રામમાં રમાડો"
-          >
-            <Bot className="w-3.5 h-3.5" />
-            <span>ટેલિગ્રામ</span>
-          </button>
-
-          {/* 3. Bulk Paste (Owner Only) */}
-          {isOwner && (
+        {/* Row 3: Uniform Action Buttons Bar */}
+        <div className="space-y-1.5 pt-1">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5">
             <button
-              onClick={() => setBulkModalOpen(true)}
-              className="flex-1 min-w-[80px] sm:flex-initial flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs border border-indigo-200 transition-colors"
+              onClick={() => onTakeTest({ ...currentPaper, questions })}
+              disabled={questions.length === 0}
+              className="h-10 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
             >
-              <ClipboardPaste className="w-3.5 h-3.5" />
-              <span>બલ્ક પેસ્ટ</span>
+              <PlayCircle className="w-4 h-4 flex-shrink-0" />
+              <span>ટેસ્ટ / સેટ્સ</span>
             </button>
-          )}
 
-          {/* 4. Leaderboard / Results */}
-          <button
-            onClick={() => onOpenLeaderboard?.({ ...currentPaper, questions })}
-            className="flex-1 min-w-[70px] sm:flex-initial flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs border border-amber-200 transition-colors"
-            title="પરિણામ & સ્કોર"
-          >
-            <Trophy className="w-3.5 h-3.5 text-amber-600" />
-            <span>પરિણામ</span>
-          </button>
-
-          {/* 5. Delete Entire Paper (Owner Only) */}
-          {isOwner && (
             <button
-              onClick={handleDeleteEntirePaper}
-              className="flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs border border-rose-200 transition-colors"
-              title="આખું પેપર કાયમ માટે ડિલીટ કરો"
+              onClick={() => onOpenTelegram?.({ ...currentPaper, questions })}
+              className="h-10 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold text-xs shadow-sm transition-all"
+              title="આ ટેસ્ટ ટેલિગ્રામમાં રમાડો"
             >
-              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              <span>ડિલીટ</span>
+              <Bot className="w-4 h-4 flex-shrink-0" />
+              <span>ટેલિગ્રામ ક્વિઝ</span>
             </button>
-          )}
 
-          {/* 6. PDF Studio (Direct Auto-Load) */}
-          <a
-            href={`/pdf-studio?paperId=${currentPaper.id}&quizCode=${currentPaper.testCode || ""}`}
-            className="flex-1 min-w-[70px] sm:flex-initial flex items-center justify-center space-x-1 px-2.5 py-1.5 sm:py-2 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs border border-emerald-300 transition-colors"
-            title="PDF Studio માં આ પેપર પ્રિન્ટ / એક્સપોર્ટ કરો"
-          >
-            <Printer className="w-3.5 h-3.5 text-emerald-600" />
-            <span>PDF Studio</span>
-          </a>
+            {isOwner && (
+              <button
+                onClick={() => setBulkModalOpen(true)}
+                className="h-10 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs border border-indigo-200 transition-colors"
+              >
+                <ClipboardPaste className="w-4 h-4 flex-shrink-0" />
+                <span>બલ્ક પેસ્ટ</span>
+              </button>
+            )}
 
-          {/* 7. Export / Print */}
-          <button
-            onClick={() => onExport({ ...currentPaper, questions })}
-            className="p-1.5 sm:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex-shrink-0"
-            title="Export & Print"
-          >
-            <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
+            <button
+              onClick={() => onOpenLeaderboard?.({ ...currentPaper, questions })}
+              className="h-10 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs border border-amber-200 transition-colors"
+              title="પરિણામ & સ્કોર"
+            >
+              <Trophy className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span>પરિણામ</span>
+            </button>
+
+            <a
+              href={`/pdf-studio?paperId=${currentPaper.id}&quizCode=${currentPaper.testCode || ""}`}
+              className="h-10 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs border border-emerald-300 transition-colors"
+              title="PDF Studio માં આ પેપર પ્રિન્ટ / એક્સપોર્ટ કરો"
+            >
+              <Printer className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>PDF Studio</span>
+            </a>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => onExport({ ...currentPaper, questions })}
+                className="flex-1 sm:flex-initial h-10 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 flex items-center justify-center gap-1.5 transition-colors"
+                title="Export & Print"
+              >
+                <Share2 className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>શેર</span>
+              </button>
+
+              {isOwner && (
+                <button
+                  onClick={handleDeleteEntirePaper}
+                  className="flex-1 sm:flex-initial h-10 flex items-center justify-center space-x-1 px-3 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs border border-rose-200 transition-colors"
+                  title="આખું પેપર કાયમ માટે ડિલીટ કરો"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                  <span>ડિલીટ</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -826,20 +824,20 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
       {!isEditingQuestion && (
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 sm:top-3 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="પેપરના પ્રશ્નોમાં શોધો... (Search MCQs)"
-              className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
+              className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
             />
           </div>
 
           {isOwner && (
             <button
               onClick={handleOpenNewQuestion}
-              className="flex items-center space-x-1 px-3.5 py-2 sm:py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700 whitespace-nowrap"
+              className="h-10 flex items-center space-x-1 px-3.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-sm hover:bg-brand-700 whitespace-nowrap flex-shrink-0"
             >
               <Plus className="w-4 h-4" />
               <span>નવો પ્રશ્ન</span>
@@ -864,20 +862,20 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
                 : "આ પેપરમાં હજુ શિક્ષક દ્વારા પ્રશ્નો ઉમેરવામાં આવ્યા નથી."}
             </p>
             {isOwner && (
-              <div className="flex items-center justify-center gap-2">
+              <div className="grid grid-cols-2 sm:flex items-center justify-center gap-2 max-w-xs sm:max-w-none mx-auto">
                 <button
                   onClick={handleOpenNewQuestion}
-                  className="px-4 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700 flex items-center space-x-1"
+                  className="h-10 px-4 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-sm hover:bg-brand-700 flex items-center justify-center space-x-1"
                 >
                   <Plus className="w-4 h-4" />
                   <span>પ્રશ્ન ટાઈપ કરો</span>
                 </button>
                 <button
                   onClick={() => setBulkModalOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs hover:bg-indigo-100 flex items-center space-x-1"
+                  className="h-10 px-4 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs hover:bg-indigo-100 flex items-center justify-center space-x-1"
                 >
                   <ClipboardPaste className="w-4 h-4" />
-                  <span>બલ્ક પેસ્ટ કરો</span>
+                  <span>બલ્ક પેસ્ટ</span>
                 </button>
               </div>
             )}
@@ -891,23 +889,23 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
                 className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-shadow space-y-3"
               >
                 {/* Question Header & Order Actions */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2 flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
                     <span className="w-6 h-6 rounded-lg bg-brand-100 text-brand-700 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
                       {q.questionNumber || index + 1}
                     </span>
-                    <p className="text-sm font-bold text-slate-900 leading-snug">
+                    <p className="text-sm font-bold text-slate-900 leading-snug break-words">
                       {q.questionText}
                     </p>
                   </div>
 
-                  {/* Ordering & Actions (Owner Only) */}
+                  {/* Ordering & Actions (Owner Only — uniform w-8 h-8 buttons) */}
                   {isOwner && (
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center justify-end gap-1 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100 flex-shrink-0">
                       <button
                         onClick={() => handleMove(index, "up")}
                         disabled={index === 0}
-                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30"
+                        className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30"
                         title="Move Up"
                       >
                         <ChevronUp className="w-4 h-4" />
@@ -915,28 +913,28 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
                       <button
                         onClick={() => handleMove(index, "down")}
                         disabled={index === questions.length - 1}
-                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30"
+                        className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30"
                         title="Move Down"
                       >
                         <ChevronDown className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDuplicateQuestion(index)}
-                        className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                        className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
                         title="Duplicate"
                       >
                         <Copy className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleEditQuestion(index)}
-                        className="p-1 rounded text-slate-400 hover:text-brand-600 hover:bg-brand-50"
+                        className="w-8 h-8 rounded-lg bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-600 hover:bg-brand-100"
                         title="Edit"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleDeleteQuestion(index)}
-                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500 hover:text-rose-700 hover:bg-rose-100"
                         title="Delete"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -946,25 +944,25 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
                 </div>
 
                 {/* Options List */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:pl-8">
                   {q.options.map((opt, optIdx) => {
                     const isCorrect = q.correctAnswer === optIdx;
                     return (
                       <div
                         key={optIdx}
-                        className={`p-2 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                        className={`p-2.5 rounded-xl border text-xs flex items-start justify-between gap-2 ${
                           isCorrect
                             ? "bg-emerald-50 border-emerald-300 text-emerald-900 font-bold"
                             : "bg-slate-50/70 border-slate-200 text-slate-700"
                         }`}
                       >
-                        <div className="flex items-center gap-2 truncate">
+                        <div className="flex items-start gap-2 min-w-0 flex-1">
                           <span className={`w-5 h-5 rounded-md text-[11px] flex items-center justify-center font-bold flex-shrink-0 ${
                             isCorrect ? "bg-emerald-600 text-white" : "bg-white text-slate-600 border border-slate-200"
                           }`}>
                             {labels[optIdx]}
                           </span>
-                          <span className="truncate">{opt}</span>
+                          <span className="break-words">{opt}</span>
                         </div>
                         {isCorrect && (
                           <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5 flex-shrink-0">
@@ -979,9 +977,9 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
 
                 {/* Explanation */}
                 {q.explanation && (
-                  <div className="pl-8 pt-1 text-xs text-slate-500 bg-amber-50/60 p-2.5 rounded-xl border border-amber-200/60 flex items-start gap-1.5">
+                  <div className="sm:pl-8 pt-1 text-xs text-slate-500 bg-amber-50/60 p-2.5 rounded-xl border border-amber-200/60 flex items-start gap-1.5">
                     <Info className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div>
+                    <div className="min-w-0 break-words">
                       <strong className="text-amber-800">સમજૂતી:</strong> {q.explanation}
                     </div>
                   </div>

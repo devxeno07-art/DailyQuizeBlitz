@@ -373,20 +373,20 @@ export const PaperList: React.FC<PaperListProps> = ({
       </div>
 
       {/* Scope Selector: My Papers vs Community Tests */}
-      <div className="flex items-center justify-between border-b border-slate-200/90 pb-2 gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto max-w-full">
+      <div className="flex items-center justify-between gap-2 pb-1">
+        <div className="flex-1 grid grid-cols-3 sm:flex items-center gap-1 p-1 bg-slate-100 rounded-xl min-w-0">
           <button
             onClick={() => setPaperScope("my")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`h-9 px-2 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
               paperScope === "my"
                 ? "bg-white text-brand-700 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>મારા પેપર્સ</span>
+            <BookOpen className="w-3.5 h-3.5 flex-shrink-0 hidden xs:inline" />
+            <span className="truncate">મારા</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono flex-shrink-0 ${
                 paperScope === "my"
                   ? "bg-brand-50 text-brand-700"
                   : "bg-slate-200 text-slate-600"
@@ -398,16 +398,16 @@ export const PaperList: React.FC<PaperListProps> = ({
 
           <button
             onClick={() => setPaperScope("community")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`h-9 px-2 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
               paperScope === "community"
                 ? "bg-white text-indigo-700 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <Globe className="w-3.5 h-3.5 text-indigo-600" />
-            <span>કમ્યુનિટી ટેસ્ટ્સ</span>
+            <Globe className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0 hidden xs:inline" />
+            <span className="truncate">કમ્યુનિટી</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono flex-shrink-0 ${
                 paperScope === "community"
                   ? "bg-indigo-50 text-indigo-700"
                   : "bg-slate-200 text-slate-600"
@@ -419,16 +419,16 @@ export const PaperList: React.FC<PaperListProps> = ({
 
           <button
             onClick={() => setPaperScope("all")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`h-9 px-2 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
               paperScope === "all"
                 ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <Users className="w-3.5 h-3.5 text-slate-600" />
-            <span>બધા</span>
+            <Users className="w-3.5 h-3.5 text-slate-600 flex-shrink-0 hidden xs:inline" />
+            <span className="truncate">બધા</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono flex-shrink-0 ${
                 paperScope === "all"
                   ? "bg-slate-200 text-slate-900"
                   : "bg-slate-200 text-slate-600"
@@ -442,11 +442,11 @@ export const PaperList: React.FC<PaperListProps> = ({
         <button
           onClick={loadCommunity}
           disabled={loadingCommunity}
-          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors flex-shrink-0"
+          className="w-10 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors flex items-center justify-center flex-shrink-0 shadow-xs"
           title="કમ્યુનિટી પેપર્સ રિફ્રેશ કરો"
         >
           <RefreshCw
-            className={`w-3.5 h-3.5 ${
+            className={`w-4 h-4 ${
               loadingCommunity ? "animate-spin text-brand-600" : ""
             }`}
           />
@@ -454,35 +454,35 @@ export const PaperList: React.FC<PaperListProps> = ({
       </div>
 
       {/* Search & Category Filter Bar */}
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="પેપર અથવા વિષય શોધો... (Search Papers)"
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
+              className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
             />
           </div>
 
           <button
             onClick={onOpenCreate}
-            className="sm:hidden flex items-center space-x-1 px-3.5 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 whitespace-nowrap"
+            className="sm:hidden h-10 flex items-center space-x-1 px-3.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-sm whitespace-nowrap flex-shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>નવું પેપર</span>
+            <span>નવું</span>
           </button>
         </div>
 
         {/* Import / sample quick actions (shown in My Papers view) */}
         {paperScope !== "community" && (
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
+              className="h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
               title="અગાઉ એક્સપોર્ટ કરેલી JSON ફાઈલ ઈમ્પોર્ટ કરો"
             >
               {importing ? (
@@ -496,11 +496,11 @@ export const PaperList: React.FC<PaperListProps> = ({
             <button
               onClick={handleLoadSample}
               disabled={importing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-800 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
+              className="h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-800 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs shadow-sm transition-colors disabled:opacity-50"
               title="25 GSRTC પ્રશ્નોનો તૈયાર નમૂનો ઉમેરો"
             >
               <FileJson className="w-3.5 h-3.5 text-emerald-600" />
-              <span>GSRTC નમૂનો લોડ કરો</span>
+              <span>GSRTC નમૂનો</span>
             </button>
 
             <input
@@ -703,98 +703,93 @@ export const PaperList: React.FC<PaperListProps> = ({
                   </div>
                 </div>
 
-                {/* Bottom Actions */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
-                  <div className="flex items-center gap-1">
-                    {/* Take Test (Available for all) */}
+                {/* Bottom Actions (Structured 2-Row Mobile-First Grid) */}
+                <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+                  {/* Primary Row: Equal Width & Height CTAs */}
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onTakeTest(paper);
                       }}
-                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition-colors"
+                      className="h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm transition-all"
                       title="ટેસ્ટ / સેટ મોડ શરૂ કરો"
                     >
-                      <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{count > 15 ? "ટેસ્ટ / સેટ્સ" : "ટેસ્ટ આપો"}</span>
+                      <PlayCircle className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">{count > 15 ? "ટેસ્ટ / સેટ્સ" : "ટેસ્ટ આપો"}</span>
                     </button>
 
-                    {/* View Leaderboard Results */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenLeaderboard?.(paper);
-                      }}
-                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs border border-amber-200 transition-colors"
-                      title="પરિણામ & લીડરબોર્ડ સ્કોર જુઓ"
-                    >
-                      <Trophy className="w-3.5 h-3.5 text-amber-600" />
-                      <span>પરિણામ</span>
-                    </button>
-
-                    {/* Telegram Bot Code Button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenTelegramQuiz?.(paper);
-                      }}
-                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-800 hover:bg-sky-100 font-bold text-xs border border-sky-300 transition-colors"
-                      title="ટેલિગ્રામ ગ્રૂપ ક્વિઝ કોડ બનાવો / જુઓ"
-                    >
-                      <Bot className="w-3.5 h-3.5 text-sky-600" />
-                      <span>{paper.testCode || "Telegram કોડ"}</span>
-                    </button>
-
-                    {/* Share / Export */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onExport(paper);
-                      }}
-                      className="p-1.5 rounded-lg bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors"
-                      title="શેર / Export"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* PDF Studio (Direct Auto-Load) */}
-                    <a
-                      href={`/pdf-studio?paperId=${paper.id}&quizCode=${paper.testCode || ""}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs border border-emerald-300 transition-colors"
-                      title="PDF Studio માં પ્રશ્નો લોડ કરો અને પ્રિન્ટ કરો"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>PDF</span>
-                    </a>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    {/* View / Edit Button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelectPaper(paper);
                       }}
-                      className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 hover:bg-brand-100 font-bold text-xs border border-brand-200 transition-colors"
+                      className="h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-brand-50 text-brand-700 hover:bg-brand-100 font-bold text-xs border border-brand-200 transition-colors"
                     >
                       {isOwner ? (
                         <>
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>એડિટ</span>
+                          <Edit3 className="w-4 h-4 flex-shrink-0" />
+                          <span>એડિટ કરો</span>
                         </>
                       ) : (
                         <>
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>જોવો</span>
+                          <Eye className="w-4 h-4 flex-shrink-0" />
+                          <span>પ્રશ્નો જુઓ</span>
                         </>
                       )}
                     </button>
+                  </div>
 
-                    {/* Duplicate / Clone to library */}
+                  {/* Secondary Row: Uniform h-9 Utility Bar */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenLeaderboard?.(paper);
+                      }}
+                      className="flex-1 h-9 flex items-center justify-center gap-1 px-2 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-[11px] border border-amber-200 transition-colors"
+                      title="પરિણામ & લીડરબોર્ડ સ્કોર જુઓ"
+                    >
+                      <Trophy className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span>પરિણામ</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenTelegramQuiz?.(paper);
+                      }}
+                      className="flex-1 h-9 flex items-center justify-center gap-1 px-2 rounded-xl bg-sky-50 text-sky-800 hover:bg-sky-100 font-bold text-[11px] border border-sky-200 transition-colors min-w-0"
+                      title="ટેલિગ્રામ ગ્રૂપ ક્વિઝ કોડ બનાવો / જુઓ"
+                    >
+                      <Bot className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                      <span className="truncate">{paper.testCode || "ક્વિઝ"}</span>
+                    </button>
+
+                    <a
+                      href={`/pdf-studio?paperId=${paper.id}&quizCode=${paper.testCode || ""}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-9 px-2.5 flex items-center justify-center gap-1 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-[11px] border border-emerald-200 transition-colors flex-shrink-0"
+                      title="PDF Studio માં પ્રશ્નો લોડ કરો અને પ્રિન્ટ કરો"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      <span>PDF</span>
+                    </a>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExport(paper);
+                      }}
+                      className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors flex-shrink-0"
+                      title="શેર / Export"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+
                     <button
                       onClick={(e) => handleDuplicatePaper(paper, e)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                      className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-500 hover:text-brand-600 hover:bg-brand-50 border border-slate-200 transition-colors flex-shrink-0"
                       title={
                         isOwner
                           ? "આ પેપરની કોપી બનાવો (Duplicate)"
@@ -804,12 +799,11 @@ export const PaperList: React.FC<PaperListProps> = ({
                       <CopyPlus className="w-3.5 h-3.5" />
                     </button>
 
-                    {/* Delete Paper (Owner Only!) */}
                     {isOwner && (
                       <button
                         onClick={(e) => handleDelete(paper, e)}
                         disabled={deletingId === paper.id}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40"
+                        className="w-9 h-9 flex items-center justify-center rounded-xl bg-rose-50/70 text-rose-500 hover:text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors disabled:opacity-40 flex-shrink-0"
                         title="Delete Paper"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

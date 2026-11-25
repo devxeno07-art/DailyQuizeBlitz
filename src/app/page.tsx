@@ -107,74 +107,75 @@ export default function Home() {
             onDeletePaper={() => setSelectedPaper(null)}
           />
         ) : (
-          <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 space-y-4">
-            {/* Top Tab Switcher */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-2">
-              <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar">
-                {/* Show Library Tab ONLY if user was specifically granted permission by Admin */}
-                {hasLibraryAccess && (
+          <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
+            {/* Top Tab Switcher (cleanly aligned on both mobile & desktop) */}
+            {(hasLibraryAccess || true) && (
+              <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className={`grid ${hasLibraryAccess ? "grid-cols-2" : "grid-cols-1"} sm:flex items-center gap-1.5`}>
+                  {hasLibraryAccess && (
+                    <button
+                      onClick={() => setMainTab("library")}
+                      className={`h-10 flex items-center justify-center space-x-1.5 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                        mainTab === "library"
+                          ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-sm shadow-orange-500/20"
+                          : "text-slate-600 bg-slate-50 hover:bg-slate-100"
+                      }`}
+                    >
+                      <FileDown className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">લાઇબ્રેરી (Drive)</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                        mainTab === "library" ? "bg-white/20 text-white" : "bg-orange-100 text-orange-800"
+                      }`}>
+                        4
+                      </span>
+                    </button>
+                  )}
+
                   <button
-                    onClick={() => setMainTab("library")}
-                    className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
-                      mainTab === "library"
-                        ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md shadow-orange-500/20"
-                        : "text-slate-600 hover:bg-slate-100"
+                    onClick={() => setMainTab("my_papers")}
+                    className={`h-10 flex items-center justify-center space-x-1.5 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                      mainTab === "my_papers"
+                        ? "bg-brand-600 text-white shadow-sm shadow-brand-500/20"
+                        : "text-slate-600 bg-slate-50 hover:bg-slate-100"
                     }`}
                   >
-                    <FileDown className="w-4 h-4" />
-                    <span>ઓરિજિનલ પેપર્સ લાઇબ્રેરી (Drive)</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      mainTab === "library" ? "bg-white/20 text-white" : "bg-orange-100 text-orange-800"
+                    <BookOpen className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">મારા ડિજિટલ પેપર્સ</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                      mainTab === "my_papers" ? "bg-white/20 text-white" : "bg-brand-100 text-brand-800"
                     }`}>
-                      4 પેપર્સ
+                      {papers.length}
                     </span>
                   </button>
-                )}
+                </div>
 
-                <button
-                  onClick={() => setMainTab("my_papers")}
-                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
-                    mainTab === "my_papers"
-                      ? "bg-brand-600 text-white shadow-md shadow-brand-500/20"
-                      : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  <BookOpen className="w-4 h-4" />
-                  <span>મારા ડિજિટલ પેપર્સ</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                    mainTab === "my_papers" ? "bg-white/20 text-white" : "bg-brand-100 text-brand-800"
-                  }`}>
-                    {papers.length}
-                  </span>
-                </button>
+                <div className="grid grid-cols-3 sm:flex items-center gap-1.5">
+                  <Link
+                    href="/pdf-studio"
+                    className="h-10 flex items-center justify-center space-x-1 px-2.5 sm:px-3 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold text-[11px] sm:text-xs transition-colors whitespace-nowrap"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    <span>PDF Studio</span>
+                  </Link>
+
+                  <button
+                    onClick={() => handleOpenTelegram()}
+                    className="h-10 flex items-center justify-center space-x-1 px-2.5 sm:px-3 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-bold text-[11px] sm:text-xs transition-colors whitespace-nowrap"
+                  >
+                    <Bot className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                    <span>ક્વિઝ કોડ</span>
+                  </button>
+
+                  <button
+                    onClick={() => setCreateModalOpen(true)}
+                    className="h-10 flex items-center justify-center space-x-1 px-2.5 sm:px-3 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 font-bold text-[11px] sm:text-xs transition-colors whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-brand-600 flex-shrink-0" />
+                    <span>નવું પેપર</span>
+                  </button>
+                </div>
               </div>
-
-              <div className="flex items-center gap-1.5 justify-end">
-                <Link
-                  href="/pdf-studio"
-                  className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs transition-colors"
-                >
-                  <Printer className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>PDF Studio</span>
-                </Link>
-
-                <button
-                  onClick={() => handleOpenTelegram()}
-                  className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-bold text-xs transition-colors"
-                >
-                  <Bot className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Telegram ક્વિઝ કોડ</span>
-                </button>
-
-                <button
-                  onClick={() => setCreateModalOpen(true)}
-                  className="hidden sm:flex items-center space-x-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5 text-brand-600" />
-                  <span>કસ્ટમ પેપર</span>
-                </button>
-              </div>
-            </div>
+            )}
 
             {/* Active Tab View */}
             {mainTab === "library" && hasLibraryAccess ? (

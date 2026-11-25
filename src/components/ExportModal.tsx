@@ -97,21 +97,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({ paper, isOpen, onClose
               <span>દરેક પ્રશ્ન નીચે સાચો જવાબ અને સમજૂતી દર્શાવો</span>
             </label>
 
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleCopyWhatsApp}
-                className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-emerald-100 border border-emerald-300 font-bold text-xs text-emerald-800 shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                className="h-10 px-3 rounded-xl bg-white hover:bg-emerald-100 border border-emerald-300 font-bold text-xs text-emerald-800 shadow-sm flex items-center justify-center gap-1.5 transition-colors"
               >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? "કોપી થઈ ગયું! ✓" : "ટેક્સ્ટ કોપી કરો"}</span>
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
+                <span className="truncate">{copied ? "કોપી થયું ✓" : "ટેક્સ્ટ કોપી"}</span>
               </button>
 
               <button
                 onClick={handleDirectWhatsAppShare}
-                className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors"
+                className="h-10 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors"
               >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>WhatsApp ખોલો</span>
+                <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">WhatsApp ખોલો</span>
               </button>
             </div>
           </div>
@@ -125,21 +125,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({ paper, isOpen, onClose
             <p className="text-xs text-slate-600">
               પરીક્ષા હોલ માટે સત્તાવાર પ્રશ્નપત્ર ફોર્મેટમાં પ્રિન્ટ કરો અથવા બ્રાન્ડેડ સ્ટુડિયોમાં વોટરમાર્ક સાથે PDF બનાવો.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <Link
                 href={`/pdf-studio?paperId=${paper.id}&quizCode=${paper.testCode || ""}`}
-                className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors text-center"
+                className="h-10 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors text-center"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Branded PDF Studio</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">Branded PDF</span>
               </Link>
 
               <button
                 onClick={handlePrint}
-                className="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-colors"
+                className="h-10 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-colors"
               >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Standard Print</span>
+                <Printer className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Standard Print</span>
               </button>
             </div>
           </div>
@@ -148,18 +148,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({ paper, isOpen, onClose
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
               onClick={() => exportPaperAsCSV(paper)}
-              className="p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 flex items-center justify-center gap-2 text-xs font-bold shadow-sm transition-colors"
+              className="h-10 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 flex items-center justify-center gap-1.5 text-xs font-bold shadow-sm transition-colors"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>Excel (CSV) ફાઇલ</span>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="truncate">Excel (CSV)</span>
             </button>
 
             <button
               onClick={() => exportPaperAsJSON(paper)}
-              className="p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 flex items-center justify-center gap-2 text-xs font-bold shadow-sm transition-colors"
+              className="h-10 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 flex items-center justify-center gap-1.5 text-xs font-bold shadow-sm transition-colors"
             >
-              <FileDown className="w-4 h-4 text-brand-600" />
-              <span>JSON બેકઅપ ફાઇલ</span>
+              <FileDown className="w-4 h-4 text-brand-600 shrink-0" />
+              <span className="truncate">JSON બેકઅપ</span>
             </button>
           </div>
         </div>

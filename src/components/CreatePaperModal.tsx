@@ -283,21 +283,21 @@ export const CreatePaperModal: React.FC<CreatePaperModalProps> = ({
           </div>
 
           {/* Submit Buttons */}
-          <div className="pt-2 flex items-center justify-end space-x-2">
+          <div className="pt-2 grid grid-cols-2 sm:flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs"
+              className="h-10 px-4 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs inline-flex items-center justify-center"
             >
-              રદ કરો (Cancel)
+              રદ કરો
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 flex items-center space-x-1.5 disabled:opacity-70"
+              className="h-10 px-5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 inline-flex items-center justify-center gap-1.5 disabled:opacity-70"
             >
-              <Plus className="w-4 h-4" />
-              <span>{saving ? "બની રહ્યું છે..." : "પેપર બનાવો અને ખોલો"}</span>
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="truncate">{saving ? "બની રહ્યું છે..." : "પેપર બનાવો"}</span>
             </button>
           </div>
         </form>

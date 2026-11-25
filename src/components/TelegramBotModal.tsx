@@ -436,13 +436,13 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
               </div>
 
               {/* Quick Preset Buttons */}
-              <div className="grid grid-cols-6 gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 {[10, 15, 20, 25, 30, 45].map((sec) => (
                   <button
                     key={sec}
                     type="button"
                     onClick={() => setTimePerQuestion(sec)}
-                    className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    className={`h-9 rounded-xl text-xs font-bold border transition-all flex items-center justify-center ${
                       timePerQuestion === sec
                         ? "bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20"
                         : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
@@ -453,10 +453,10 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                 ))}
               </div>
 
-              <div className="text-[10px] text-slate-400 flex items-center justify-between">
-                <span>💡 લઘુત્તમ 5 થી મહત્તમ 600 સેકન્ડ સુધી કોઈપણ સમય જાતે ટાઈપ કરી શકો છો.</span>
+              <div className="text-[10px] text-slate-400 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span>💡 5 થી 600 સેકન્ડ સુધી કોઈપણ સમય સેટ કરી શકો છો.</span>
                 {activePaper?.questions?.length ? (
-                  <span className="font-medium text-slate-500">
+                  <span className="font-semibold text-slate-500">
                     કુલ સમય: ~{Math.ceil(((timePerQuestion || 30) * effectiveQuestionCount) / 60)} મિનિટ
                   </span>
                 ) : null}
@@ -464,14 +464,14 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
             </div>
 
             {/* Question Order & Random Pick Mode */}
-            <div className="space-y-1.5 pt-1 border-t border-slate-200">
-              <div className="flex items-center justify-between">
+            <div className="space-y-2 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Shuffle className="w-3.5 h-3.5 text-sky-600" />
-                  <span>પ્રશ્ન પસંદગી ક્રમ (Question Order)</span>
+                  <span>પ્રશ્ન પસંદગી ક્રમ</span>
                 </label>
                 <span className="text-[11px] text-slate-500 font-medium">
-                  {selectionMode === "random" ? "🎲 રેન્ડમ પસંદ (Random Pick)" : "📑 જેવા છે તેવા (Original)"}
+                  {selectionMode === "random" ? "🎲 રેન્ડમ" : "📑 મૂળ ક્રમ"}
                 </span>
               </div>
 
@@ -479,44 +479,44 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectionMode("original")}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                  className={`h-10 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
                     selectionMode === "original"
                       ? "bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20"
                       : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                   }`}
                 >
-                  <ListOrdered className="w-3.5 h-3.5" />
-                  <span>જેવા છે તેવા (મૂળ ક્રમ)</span>
+                  <ListOrdered className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="truncate">મૂળ ક્રમ (1→N)</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setSelectionMode("random")}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                  className={`h-10 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
                     selectionMode === "random"
                       ? "bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-500/20"
                       : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                   }`}
                 >
-                  <Shuffle className="w-3.5 h-3.5" />
-                  <span>રેન્ડમ પસંદ (Random Pick)</span>
+                  <Shuffle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="truncate">રેન્ડમ શફલ</span>
                 </button>
               </div>
             </div>
 
             {/* Question Count Selector + Set Mode */}
-            <div className="space-y-2.5 pt-1 border-t border-slate-200">
-              <div className="flex items-center justify-between">
+            <div className="space-y-2.5 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-sky-600" />
-                  <span>ટેસ્ટમાં કેટલા પ્રશ્નો રાખવા? / સેટ્સ બનાવો</span>
+                  <span>પ્રશ્નોની સંખ્યા / સેટ્સ</span>
                 </label>
                 <span className="text-[11px] font-bold font-mono text-sky-700 bg-sky-100/70 border border-sky-200 px-2 py-0.5 rounded-md">
                   {questionCount === "sets" && activeSetObj
-                    ? `${activeSetObj.label} • ${activeSetObj.questionCount} Qs`
+                    ? `${activeSetObj.label}`
                     : questionCount === "all"
-                    ? `બધા (${activePaper?.questions?.length || 0}) પ્રશ્નો`
-                    : `${questionCount} પ્રશ્નો (કુલ ${activePaper?.questions?.length || 0} માંથી)`}
+                    ? `બધા (${activePaper?.questions?.length || 0})`
+                    : `${questionCount} / ${activePaper?.questions?.length || 0}`}
                 </span>
               </div>
 
@@ -528,14 +528,14 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                     setQuestionCount("sets");
                     setCustomCountInput("");
                   }}
-                  className={`py-1.5 px-3 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 ${
+                  className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 ${
                     questionCount === "sets"
                       ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-500/20"
                       : "bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100"
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
-                  <span>📚 સેટ્સ (30/40/50)</span>
+                  <span>સેટ્સ (30/40/50)</span>
                 </button>
 
                 <button
@@ -544,13 +544,13 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                     setQuestionCount("all");
                     setCustomCountInput("");
                   }}
-                  className={`py-1.5 px-3 rounded-xl text-xs font-bold border transition-all ${
+                  className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${
                     questionCount === "all"
                       ? "bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20"
                       : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                   }`}
                 >
-                  બધા (All - {activePaper?.questions?.length || 0})
+                  બધા ({activePaper?.questions?.length || 0})
                 </button>
 
                 {[10, 20, 25, 30, 50].map((num) => {
@@ -563,7 +563,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                         setQuestionCount(num);
                         setCustomCountInput(String(num));
                       }}
-                      className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all ${
+                      className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${
                         questionCount === num
                           ? "bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20"
                           : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
@@ -574,7 +574,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                   );
                 })}
 
-                <div className="flex items-center gap-1 ml-auto">
+                <div className="flex items-center gap-1.5 ml-auto">
                   <span className="text-[11px] text-slate-400 font-medium">કસ્ટમ:</span>
                   <input
                     type="number"
@@ -592,8 +592,8 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                         setQuestionCount("all");
                       }
                     }}
-                    placeholder="દા.ત. 40"
-                    className="w-16 px-2 py-1 text-xs font-bold font-mono text-center rounded-lg border border-slate-300 focus:border-sky-500 focus:outline-none"
+                    placeholder="40"
+                    className="w-16 h-9 px-2 text-xs font-bold font-mono text-center rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -758,10 +758,10 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
               {/* Group Sharing Actions */}
               <div className="space-y-2">
-                <div className="flex gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     onClick={handleCopyGroupMessage}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-white hover:bg-sky-100 border border-sky-300 font-bold text-xs text-sky-800 shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                    className="h-10 px-3 rounded-xl bg-white hover:bg-sky-100 border border-sky-300 font-bold text-xs text-sky-800 shadow-sm flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {copiedMessage ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                     <span>{copiedMessage ? "મેસેજ કોપી થયો! ✓" : "ગ્રૂપ મેસેજ કોપી કરો"}</span>
@@ -769,7 +769,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
                   <button
                     onClick={handleDirectShareToTelegram}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center justify-center gap-1.5 transition-colors"
+                    className="h-10 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <Send className="w-4 h-4" />
                     <span>Telegram પર મોકલો</span>
@@ -781,7 +781,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                   href={`https://t.me/${botConfig.botUsername || "MockQuizBot"}?startgroup=${generatedQuiz.code}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 hover:from-blue-700 hover:to-indigo-700 transition-colors"
+                  className="w-full h-11 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 hover:from-blue-700 hover:to-indigo-700 transition-colors"
                 >
                   <Bot className="w-4 h-4" />
                   <span>બોટને તમારા ટેલિગ્રામ ગ્રૂપમાં એડ કરો</span>
@@ -791,10 +791,10 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                 {/* Direct Link to PDF Studio */}
                 <Link
                   href={`/pdf-studio?quizCode=${generatedQuiz.code}`}
-                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 hover:from-emerald-700 hover:to-teal-700 transition-all"
+                  className="w-full h-11 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-2 hover:from-emerald-700 hover:to-teal-700 transition-all"
                 >
                   <Printer className="w-4 h-4" />
-                  <span>આ ટેસ્ટના પ્રશ્નો PDF Studio માં ખોલો (A4 પ્રિન્ટ)</span>
+                  <span>આ ટેસ્ટના પ્રશ્નો PDF Studio માં ખોલો</span>
                   <ExternalLink className="w-3.5 h-3.5 opacity-80" />
                 </Link>
               </div>

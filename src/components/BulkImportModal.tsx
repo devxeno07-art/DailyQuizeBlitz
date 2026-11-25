@@ -223,11 +223,11 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+        <div className="px-4 sm:px-5 py-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="text-xs">
             {parsed.length > 0 ? (
               <span className="font-bold text-emerald-700 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 {parsed.length} પ્રશ્નો સફળતાપૂર્વક ઓળખાયા
               </span>
             ) : (
@@ -235,20 +235,20 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
             )}
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={onClose}
-              className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs"
+              className="h-10 px-3.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs inline-flex items-center justify-center"
             >
               રદ કરો
             </button>
             <button
               onClick={handleConfirmImport}
               disabled={parsed.length === 0}
-              className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 flex items-center space-x-1.5 disabled:opacity-50"
+              className="h-10 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" />
-              <span>{parsed.length} પ્રશ્નો ઉમેરો (Import)</span>
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="truncate">{parsed.length} પ્રશ્નો ઉમેરો</span>
             </button>
           </div>
         </div>

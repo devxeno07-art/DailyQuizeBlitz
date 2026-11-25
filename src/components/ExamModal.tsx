@@ -780,23 +780,23 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
                         onClick={() =>
                           startTestWithQuestions(nextPendingSet.questions, nextPendingSet)
                         }
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-brand-600 hover:from-indigo-700 hover:to-brand-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-all"
+                        className="w-full sm:w-auto h-10 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-brand-600 hover:from-indigo-700 hover:to-brand-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
                       >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>આગલો બાકી સેટ શરૂ કરો: {nextPendingSet.label}</span>
+                        <Play className="w-3.5 h-3.5 fill-current flex-shrink-0" />
+                        <span className="truncate">આગલો સેટ: {nextPendingSet.label}</span>
                       </button>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="text-xs text-slate-600">
                     તમામ <strong>{allQuestions.length} પ્રશ્નો</strong> એક જ ટેસ્ટમાં આવશે. (સમય: ~{Math.max(5, paper.timeLimitMinutes || allQuestions.length)} મિનિટ)
                   </div>
                   <button
                     type="button"
                     onClick={() => startTestWithQuestions(allQuestions, null)}
-                    className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md flex items-center gap-1.5 flex-shrink-0"
+                    className="w-full sm:w-auto h-10 px-5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 flex-shrink-0"
                   >
                     <Play className="w-4 h-4 fill-current" />
                     <span>આખો ટેસ્ટ શરૂ કરો</span>
@@ -1149,35 +1149,35 @@ export const ExamModal: React.FC<ExamModalProps> = ({ paper, isOpen, onClose }) 
                 type="button"
                 onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
                 disabled={currentIndex === 0}
-                className="px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-30 flex items-center space-x-1"
+                className="h-10 px-3.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-30 flex items-center justify-center space-x-1 flex-shrink-0"
               >
                 <ChevronLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">પાછળ</span>
+                <span>પાછળ</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleClearAnswer}
                 disabled={selectedAnswers[currentIndex] === undefined}
-                className="px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 disabled:opacity-30"
+                className="h-10 px-2.5 text-xs font-semibold text-slate-500 hover:text-slate-800 disabled:opacity-30 whitespace-nowrap"
               >
-                જવાબ સાફ કરો
+                સાફ કરો
               </button>
 
               {currentIndex === totalQuestions - 1 ? (
                 <button
                   type="button"
                   onClick={handleSubmitTest}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center space-x-1"
+                  className="h-10 px-4 sm:px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center space-x-1 flex-shrink-0"
                 >
-                  <span>ટેસ્ટ સબમિટ કરો & પરિણામ જુઓ</span>
+                  <span>સબમિટ કરો</span>
                   <CheckCircle2 className="w-4 h-4" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => setCurrentIndex((prev) => Math.min(totalQuestions - 1, prev + 1))}
-                  className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 flex items-center space-x-1"
+                  className="h-10 px-4 sm:px-5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm flex items-center justify-center space-x-1 flex-shrink-0"
                 >
                   <span>આગળ</span>
                   <ChevronRight className="w-4 h-4" />
