@@ -15,14 +15,17 @@ import {
   getLatestSessionByCode,
   getAllSessions,
   saveSession,
-  findSessionByPollId,
   saveServerBotConfig,
   getServerOverviewStats,
   sessionId,
   getPendingDeletes,
   addPendingDelete,
   removePendingDelete,
+  recordSessionPollAnswer,
+  getAllUpcomingReminders,
+  clearUpcomingReminder,
 } from "./serverStorage";
+import { acquireRedisLock, releaseRedisLock } from "./kvStore";
 
 export interface BotProcessResult {
   handled: boolean;
@@ -196,6 +199,55 @@ export const processDuePendingDeletes = async (): Promise<number> => {
     return deleted;
   } catch {
     return 0;
+  }
+};
+
+export const sendMessageAndGetId = async (
+  token: string,
+  chatId: number | string,
+  text: string
+): Promise<{ ok: boolean; messageId?: number; error?: string }> => {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data?.ok) {
+      return { ok: false, error: data?.description || "sendMessage failed" };
+    }
+    return { ok: true, messageId: data.result?.message_id };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "Network error" };
+  }
+};
+
+export const clearGroupUpcomingReminder = async (
+  token: string,
+  chatId: number | string
+): Promise<void> => {
+  try {
+    const groupKey = String(chatId);
+    const reminders = await getAllUpcomingReminders();
+    const match = reminders.find((r) => r.groupId === groupKey);
+    if (!match) return;
+    if (match.messageId && token) {
+      await deleteTelegramMessageSafe(token, Number(chatId), match.messageId);
+      await removePendingDelete(`${Number(chatId)}:${match.messageId}`).catch(
+        () => {}
+      );
+    }
+    await clearUpcomingReminder(groupKey);
+  } catch {
+    // Ignore errors cleanly
   }
 };
 
@@ -755,9 +807,23 @@ export const finalizeDueSessions = async (): Promise<number> => {
 
   let finalized = 0;
   for (const session of due) {
+    const finLockKey = `finalize:${session.id}`;
+    const acquired = await acquireRedisLock(finLockKey, 30_000);
+    if (!acquired) continue;
+
+    const fresh = await getSession(session.code, session.chatId);
+    if (
+      !fresh ||
+      fresh.status !== "active" ||
+      fresh.leaderboardSentAt ||
+      fresh.polls.length < (fresh.quiz?.questions?.length || 0)
+    ) {
+      continue;
+    }
+
     const ok = await sendLeaderboard(
-      { token, chatId: session.chatId },
-      session,
+      { token, chatId: fresh.chatId },
+      fresh,
       true
     );
     if (ok) finalized += 1;
@@ -784,6 +850,10 @@ const sendPollForQuestion = async (
   session: TelegramQuizSession,
   index: number
 ): Promise<{ ok: boolean; error?: string }> => {
+  if (session.polls.some((p) => p.questionIndex === index)) {
+    return { ok: false, error: `Question index ${index} already sent` };
+  }
+
   const question = session.quiz.questions[index];
   if (!question) {
     return { ok: false, error: "Question not found" };
@@ -839,16 +909,14 @@ const sendPollForQuestion = async (
 let advanceInProgress = false;
 
 /**
- * Sequential quiz runner. Called by the polling daemon (every second) and by
- * the cron tick. Sends the next question only after the previous poll's
- * open_period has elapsed, so participants never see the whole paper at once.
+ * Sequential quiz runner. Called by the background runner, webhooks, and
+ * cron tick. Uses an atomic Redis distributed lock keyed by `(sessionId, questionIndex)`
+ * so the exact same MCQ can never be dispatched twice across concurrent serverless instances.
  */
 export const advanceQuizSessions = async (): Promise<{
   sent: number;
   errors: string[];
 }> => {
-  // The polling daemon and cron tick can overlap; never send two polls for
-  // the same session from two concurrent calls in this process.
   if (advanceInProgress) return { sent: 0, errors: [] };
   advanceInProgress = true;
 
@@ -865,10 +933,11 @@ export const advanceQuizSessions = async (): Promise<{
     for (const session of sessions) {
       if (session.status !== "active") continue;
       const total = session.quiz?.questions?.length || 0;
-      if (total === 0 || session.polls.length >= total) continue;
-      if (session.polls.length === 0) continue; // first poll is sent at start
+      const qIndex = session.polls.length;
+      if (total === 0 || qIndex >= total) continue;
+      if (qIndex === 0) continue; // first poll is sent at start
 
-      const lastPoll = session.polls[session.polls.length - 1];
+      const lastPoll = session.polls[qIndex - 1];
       const lastSentAt = new Date(lastPoll.sentAt).getTime();
       if (!Number.isFinite(lastSentAt)) continue;
 
@@ -878,25 +947,50 @@ export const advanceQuizSessions = async (): Promise<{
         NEXT_POLL_GRACE_MS;
       if (now < dueAt) continue;
 
-      const ctx = { token, chatId: session.chatId };
-      const result = await sendPollForQuestion(
-        ctx,
-        session,
-        session.polls.length
-      );
+      // Atomic distributed lock keyed to this exact session + question index (30s TTL)
+      const pollLockKey = `poll_send:${session.id}:idx_${qIndex}`;
+      const gotLock = await acquireRedisLock(pollLockKey, 30_000);
+      if (!gotLock) continue;
+
+      // Re-read fresh session state from Redis inside the lock to prevent stale duplicates
+      const fresh = await getSession(session.code, session.chatId);
+      if (
+        !fresh ||
+        fresh.status !== "active" ||
+        fresh.polls.length !== qIndex ||
+        fresh.polls.some((p) => p.questionIndex === qIndex)
+      ) {
+        continue;
+      }
+
+      const freshLastPoll = fresh.polls[fresh.polls.length - 1];
+      const freshLastSentAt = freshLastPoll
+        ? new Date(freshLastPoll.sentAt).getTime()
+        : 0;
+      const freshDueAt =
+        freshLastSentAt +
+        getSessionTimePerQuestion(fresh) * 1000 +
+        NEXT_POLL_GRACE_MS;
+      if (Date.now() < freshDueAt) {
+        await releaseRedisLock(pollLockKey);
+        continue;
+      }
+
+      const ctx = { token, chatId: fresh.chatId };
+      const result = await sendPollForQuestion(ctx, fresh, qIndex);
 
       if (!result.ok) {
-        session.status = "error";
-        session.error = result.error;
-        await saveSession(session);
-        errors.push(`${session.id}: ${result.error}`);
+        fresh.status = "error";
+        fresh.error = result.error;
+        await saveSession(fresh);
+        errors.push(`${fresh.id}: ${result.error}`);
         await sendMessage(
           ctx,
           `⚠️ <b>પોલ મોકલવામાં ભૂલ આવી.</b>\n` +
-            `પ્રશ્ન #${session.polls.length + 1} પર ટેસ્ટ અટકી ગઈ.\n\n` +
+            `પ્રશ્ન #${fresh.polls.length + 1} પર ટેસ્ટ અટકી ગઈ.\n\n` +
             `<i>${escapeHtml(result.error || "Unknown error")}</i>\n\n` +
             `👉 હજુ સુધી મળેલા જવાબોનું પરિણામ: <code>/results ${escapeHtml(
-              session.code
+              fresh.code
             )}</code>`
         );
         continue;
@@ -926,6 +1020,12 @@ const startQuizSession = async (
       `❌ <b>આ ટેસ્ટમાં કોઈ પ્રશ્ન નથી.</b>\nપહેલા Mini App પરથી પ્રશ્નો ઉમેરો.`
     );
     return { ok: false, error: "Quiz has no questions" };
+  }
+
+  const startLockKey = `start_quiz:${ctx.chatId}:${quiz.code.toUpperCase()}`;
+  const gotStartLock = await acquireRedisLock(startLockKey, 15_000);
+  if (!gotStartLock) {
+    return { ok: false, error: "Quiz start already in progress" };
   }
 
   const existing = await getSession(quiz.code, ctx.chatId);
@@ -983,7 +1083,7 @@ const startQuizSession = async (
       ...quiz,
       questions: sendable.map((entry) => entry.question),
       timePerQuestion: Math.max(
-        10,
+        5,
         Math.min(600, Number(quiz.timePerQuestion) || 30)
       ),
     },
@@ -998,6 +1098,8 @@ const startQuizSession = async (
     participants: {},
   };
   await saveSession(session);
+  // Clear any active upcoming test reminder message in this group now that the test is starting
+  await clearGroupUpcomingReminder(ctx.token, ctx.chatId).catch(() => {});
 
   const introOk = await sendMessage(
     ctx,
@@ -1055,79 +1157,29 @@ const handlePollAnswer = async (
   }
 
   const targetPollId = String(pollAnswer.poll_id || "").trim();
-  const session = await findSessionByPollId(targetPollId);
-  if (!session) {
-    console.warn(`[telegram] No session found for poll_id: ${targetPollId}`);
-    return { handled: false };
-  }
+  const optionIds = Array.isArray(pollAnswer.option_ids)
+    ? pollAnswer.option_ids.map((id: any) => Number(id))
+    : [];
 
-  // Once a final leaderboard was sent, don't mutate historical results.
-  if (session.status === "completed" || session.status === "stopped") {
-    return { handled: true, action: "late_poll_answer_ignored" };
-  }
-
-  const poll = session.polls.find((p) => String(p.pollId).trim() === targetPollId);
-  if (!poll) {
-    console.warn(`[telegram] Poll ${targetPollId} not in session ${session.code} polls list`);
-    return { handled: false };
-  }
-
-  const userId = String(pollAnswer.user.id);
-  const now = new Date().toISOString();
-  const existing = session.participants[userId];
-
-  const participant: TelegramParticipant = existing || {
-    userId,
+  const outcome = await recordSessionPollAnswer({
+    pollId: targetPollId,
+    userId: String(pollAnswer.user.id),
     name: userDisplayName(pollAnswer.user),
     username: pollAnswer.user.username,
-    answers: {},
-    score: 0,
-    wrong: 0,
-    answeredCount: 0,
-    joinedAt: now,
-    lastAnsweredAt: now,
-  };
+    optionIds,
+  });
 
-  participant.name = userDisplayName(pollAnswer.user);
-  participant.username = pollAnswer.user.username;
-
-  const optionIds = Array.isArray(pollAnswer.option_ids)
-    ? pollAnswer.option_ids
-    : [];
-  if (optionIds.length === 0) {
-    delete participant.answers[poll.pollId];
-  } else {
-    participant.answers[poll.pollId] = {
-      optionId: Number(optionIds[0]),
-      answeredAt: now,
-    };
+  if (outcome.status === "not_found") {
+    return { handled: false };
   }
-  participant.lastAnsweredAt = now;
-
-  let score = 0;
-  let wrong = 0;
-  let answeredCount = 0;
-  for (const sessionPoll of session.polls) {
-    const answer = participant.answers[sessionPoll.pollId];
-    if (!answer || answer.optionId < 0) continue;
-    answeredCount += 1;
-    if (answer.optionId === sessionPoll.correctOptionId) {
-      score += 1;
-    } else {
-      wrong += 1;
-    }
+  if (outcome.status === "ignored") {
+    return { handled: true, action: "late_poll_answer_ignored" };
   }
-  participant.score = score;
-  participant.wrong = wrong;
-  participant.answeredCount = answeredCount;
-
-  session.participants[userId] = participant;
-  await saveSession(session);
 
   return {
     handled: true,
     action: "poll_answer_recorded",
-    chatId: session.chatId,
+    chatId: outcome.session.chatId,
   };
 };
 

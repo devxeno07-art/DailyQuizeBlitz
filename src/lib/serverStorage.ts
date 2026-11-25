@@ -6,8 +6,15 @@ import {
   TestAttemptResult,
   ServerOverviewStats,
   PaperSetDispatchRecord,
+  UpcomingReminderRecord,
 } from "@/types";
-import { getStorageMode, kvGetJson, kvSetJson, withKeyLock } from "./kvStore";
+import {
+  getStorageMode,
+  kvGetJson,
+  kvSetJson,
+  withKeyLock,
+  withDistributedLock,
+} from "./kvStore";
 
 const BOT_CONFIG_KEY = "bot_config.json";
 const QUIZZES_KEY = "quizzes.json";
@@ -293,22 +300,174 @@ export const getLatestSessionByCode = async (
   );
 };
 
+const mergeSessionRecords = (
+  existing: TelegramQuizSession | undefined,
+  incoming: TelegramQuizSession
+): TelegramQuizSession => {
+  if (!existing) return incoming;
+  // Never merge across completely different start timestamps (e.g. a fresh re-run)
+  if (existing.startedAt !== incoming.startedAt) return incoming;
+
+  const pollMap = new Map<number, TelegramQuizSession["polls"][0]>();
+  for (const p of existing.polls || []) {
+    pollMap.set(p.questionIndex, p);
+  }
+  for (const p of incoming.polls || []) {
+    pollMap.set(p.questionIndex, p);
+  }
+  const mergedPolls = Array.from(pollMap.values()).sort(
+    (a, b) => a.questionIndex - b.questionIndex
+  );
+
+  const mergedParticipants: TelegramQuizSession["participants"] = {
+    ...(existing.participants || {}),
+  };
+  for (const [uid, p] of Object.entries(incoming.participants || {})) {
+    const prev = mergedParticipants[uid];
+    if (!prev) {
+      mergedParticipants[uid] = p;
+    } else {
+      const mergedAnswers = { ...(prev.answers || {}), ...(p.answers || {}) };
+      const newer =
+        new Date(p.lastAnsweredAt || 0).getTime() >=
+        new Date(prev.lastAnsweredAt || 0).getTime()
+          ? p
+          : prev;
+      mergedParticipants[uid] = {
+        ...newer,
+        answers: mergedAnswers,
+      };
+    }
+  }
+
+  const existingFin = existing.finalizeAt
+    ? new Date(existing.finalizeAt).getTime()
+    : 0;
+  const incomingFin = incoming.finalizeAt
+    ? new Date(incoming.finalizeAt).getTime()
+    : 0;
+
+  return {
+    ...incoming,
+    polls: mergedPolls,
+    participants: mergedParticipants,
+    finalizeAt:
+      existingFin > incomingFin ? existing.finalizeAt : incoming.finalizeAt,
+    leaderboardSentAt: existing.leaderboardSentAt || incoming.leaderboardSentAt,
+  };
+};
+
 export const saveSession = async (
   session: TelegramQuizSession
 ): Promise<void> => {
-  await withKeyLock(SESSIONS_KEY, async () => {
-    const all = await getAllSessions();
-    const idx = all.findIndex((s) => s.id === session.id);
-    if (idx >= 0) {
-      all[idx] = session;
-    } else {
-      all.unshift(session);
-    }
-    all.sort(
-      (a, b) =>
-        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-    );
-    await kvSetJson(SESSIONS_KEY, all.slice(0, MAX_SESSIONS));
+  await withDistributedLock("sessions_write", 4000, async () => {
+    await withKeyLock(SESSIONS_KEY, async () => {
+      const all = await getAllSessions();
+      const idx = all.findIndex((s) => s.id === session.id);
+      if (idx >= 0) {
+        all[idx] = mergeSessionRecords(all[idx], session);
+      } else {
+        all.unshift(session);
+      }
+      all.sort(
+        (a, b) =>
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+      );
+      await kvSetJson(SESSIONS_KEY, all.slice(0, MAX_SESSIONS));
+    });
+  });
+};
+
+/**
+ * Atomically records or updates a participant's poll answer inside the distributed
+ * sessions write lock so concurrent answers or poll advances never clobber each other.
+ */
+export const recordSessionPollAnswer = async (params: {
+  pollId: string;
+  userId: string;
+  name: string;
+  username?: string;
+  optionIds: number[];
+}): Promise<
+  | { status: "not_found" }
+  | { status: "ignored"; session: TelegramQuizSession }
+  | { status: "recorded"; session: TelegramQuizSession; questionIndex: number }
+> => {
+  const targetPollId = String(params.pollId || "").trim();
+  return await withDistributedLock("sessions_write", 4000, async () => {
+    return await withKeyLock(SESSIONS_KEY, async () => {
+      const all = await getAllSessions();
+      const sIdx = all.findIndex((s) =>
+        s.polls.some((p) => String(p.pollId).trim() === targetPollId)
+      );
+      if (sIdx < 0) return { status: "not_found" as const };
+
+      const session = all[sIdx];
+      if (session.status === "completed" || session.status === "stopped") {
+        return { status: "ignored" as const, session };
+      }
+
+      const poll = session.polls.find(
+        (p) => String(p.pollId).trim() === targetPollId
+      );
+      if (!poll) return { status: "not_found" as const };
+
+      const now = new Date().toISOString();
+      const prev = session.participants[params.userId];
+      const participant = prev
+        ? { ...prev, answers: { ...(prev.answers || {}) } }
+        : {
+            userId: params.userId,
+            name: params.name,
+            username: params.username,
+            answers: {} as Record<string, { optionId: number; answeredAt: string }>,
+            score: 0,
+            wrong: 0,
+            answeredCount: 0,
+            joinedAt: now,
+            lastAnsweredAt: now,
+          };
+
+      participant.name = params.name;
+      participant.username = params.username;
+
+      if (params.optionIds.length === 0) {
+        delete participant.answers[poll.pollId];
+      } else {
+        participant.answers[poll.pollId] = {
+          optionId: Number(params.optionIds[0]),
+          answeredAt: now,
+        };
+      }
+      participant.lastAnsweredAt = now;
+
+      let score = 0;
+      let wrong = 0;
+      let answeredCount = 0;
+      for (const sessionPoll of session.polls) {
+        const answer = participant.answers[sessionPoll.pollId];
+        if (!answer || answer.optionId < 0) continue;
+        answeredCount += 1;
+        if (answer.optionId === sessionPoll.correctOptionId) {
+          score += 1;
+        } else {
+          wrong += 1;
+        }
+      }
+      participant.score = score;
+      participant.wrong = wrong;
+      participant.answeredCount = answeredCount;
+
+      session.participants[params.userId] = participant;
+      all[sIdx] = session;
+      await kvSetJson(SESSIONS_KEY, all.slice(0, MAX_SESSIONS));
+
+      return {
+        status: "recorded" as const,
+        session,
+        questionIndex: poll.questionIndex,
+      };
+    });
   });
 };
 
@@ -549,6 +708,44 @@ export const removePendingDelete = async (id: string): Promise<void> => {
     const next = all.filter((r) => r.id !== id);
     if (next.length !== all.length) {
       await kvSetJson(PENDING_DELETES_KEY, next);
+    }
+  });
+};
+
+// ==========================================
+// Upcoming Test Reminders (Per-Group Active Reminder State)
+// ==========================================
+
+const UPCOMING_REMINDERS_KEY = "upcoming_reminders.json";
+
+export const getAllUpcomingReminders = async (): Promise<
+  UpcomingReminderRecord[]
+> => {
+  const list = await kvGetJson<UpcomingReminderRecord[]>(
+    UPCOMING_REMINDERS_KEY,
+    []
+  );
+  return Array.isArray(list) ? list : [];
+};
+
+export const saveUpcomingReminder = async (
+  record: UpcomingReminderRecord
+): Promise<void> => {
+  await withKeyLock(UPCOMING_REMINDERS_KEY, async () => {
+    const all = await getAllUpcomingReminders();
+    const filtered = all.filter((r) => r.groupId !== record.groupId);
+    filtered.push(record);
+    await kvSetJson(UPCOMING_REMINDERS_KEY, filtered);
+  });
+};
+
+export const clearUpcomingReminder = async (groupId: string): Promise<void> => {
+  if (!groupId) return;
+  await withKeyLock(UPCOMING_REMINDERS_KEY, async () => {
+    const all = await getAllUpcomingReminders();
+    const next = all.filter((r) => r.groupId !== groupId);
+    if (next.length !== all.length) {
+      await kvSetJson(UPCOMING_REMINDERS_KEY, next);
     }
   });
 };

@@ -1,0 +1,16 @@
+name: 24/7 Quiz Schedule & Reminder Cron
+
+on:
+  schedule:
+    # Runs every 5 minutes 24/7; /api/cron/tick executes single-pass checks in ~100ms
+    # and schedules imminent launches/reminders cleanly.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger DailyQuizeBlitz Cron Tick
+        run: |
+          curl -s -f --max-time 20 --retry 2 https://dailyquizeblitz.vercel.app/api/cron/tick || echo "Tick completed"

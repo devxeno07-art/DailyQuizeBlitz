@@ -124,7 +124,16 @@ export interface ScheduledDailyTest {
   lastRunAt?: string;
   lastRunDay?: string; // YYYY-MM-DD in Asia/Kolkata, prevents duplicate runs
   lastGeneratedCode?: string;
+  reminderMinutesBefore?: number; // e.g. 60 = start reminding 60m before test; 0 = disabled
   createdAt: string;
+}
+
+export interface UpcomingReminderRecord {
+  groupId: string;
+  scheduleId: string;
+  messageId: number;
+  sentAt: string;
+  deleteAt: number;
 }
 
 export interface TestAttemptResult {

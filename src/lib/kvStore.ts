@@ -232,3 +232,99 @@ export const withKeyLock = async <T>(key: string, fn: () => Promise<T>): Promise
 };
 
 export { DATA_DIR };
+
+// ==========================================
+// Distributed Atomic Redis Locks (Across Serverless Instances)
+// ==========================================
+
+const localLockFallbacks = new Map<string, number>();
+
+/**
+ * Acquires an atomic lock across all serverless instances using Upstash Redis `SET NX PX`.
+ * Falls back to an in-memory TTL lock if Redis is unavailable.
+ */
+export const acquireRedisLock = async (
+  lockKey: string,
+  ttlMs: number
+): Promise<boolean> => {
+  const fullKey = `${KEY_PREFIX}lock:${lockKey}`;
+  const validTtl = Math.max(500, Math.floor(ttlMs));
+
+  if (USE_REDIS) {
+    try {
+      const res = await fetch(KV_URL.replace(/\/$/, ""), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${KV_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(["SET", fullKey, "1", "NX", "PX", String(validTtl)]),
+        cache: "no-store",
+        signal: AbortSignal.timeout(4000),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { result?: string | null };
+        return data.result === "OK";
+      }
+    } catch (err) {
+      console.warn(`[lock] Redis lock failed for ${lockKey}, using local fallback:`, err);
+    }
+  }
+
+  const now = Date.now();
+  const expiresAt = localLockFallbacks.get(fullKey) || 0;
+  if (expiresAt > now) {
+    return false;
+  }
+  localLockFallbacks.set(fullKey, now + validTtl);
+  return true;
+};
+
+export const releaseRedisLock = async (lockKey: string): Promise<void> => {
+  const fullKey = `${KEY_PREFIX}lock:${lockKey}`;
+  localLockFallbacks.delete(fullKey);
+
+  if (USE_REDIS) {
+    try {
+      await fetch(KV_URL.replace(/\/$/, ""), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${KV_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(["DEL", fullKey]),
+        cache: "no-store",
+        signal: AbortSignal.timeout(4000),
+      });
+    } catch {
+      // Lock expires automatically by TTL
+    }
+  }
+};
+
+/**
+ * Executes `fn` while holding a distributed lock across serverless instances.
+ * Spins briefly up to `waitMs` if another instance holds the lock.
+ */
+export const withDistributedLock = async <T>(
+  lockKey: string,
+  ttlMs: number,
+  fn: () => Promise<T>,
+  waitMs = 2500
+): Promise<T> => {
+  const deadline = Date.now() + waitMs;
+  let acquired = await acquireRedisLock(lockKey, ttlMs);
+
+  while (!acquired && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 120));
+    acquired = await acquireRedisLock(lockKey, ttlMs);
+  }
+
+  try {
+    return await fn();
+  } finally {
+    if (acquired) {
+      await releaseRedisLock(lockKey);
+    }
+  }
+};

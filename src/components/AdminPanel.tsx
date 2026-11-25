@@ -190,6 +190,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [schedTimePerQ, setSchedTimePerQ] = useState(30);
   const [schedDailyTime, setSchedDailyTime] = useState("21:00");
   const [schedTargetGroup, setSchedTargetGroup] = useState("");
+  const [schedReminderMinutes, setSchedReminderMinutes] = useState<number>(60);
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [lastDispatchedQuiz, setLastDispatchedQuiz] = useState<TelegramQuiz | null>(null);
   const [copiedDispatchedCode, setCopiedDispatchedCode] = useState(false);
@@ -515,6 +516,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       scheduledTime: schedDailyTime,
       isActive: true,
       targetGroupId: schedTargetGroup.trim() || botConfig.targetGroupId || "",
+      reminderMinutesBefore: schedReminderMinutes,
       createdAt: existingSched?.createdAt || new Date().toISOString(),
     };
     try {
@@ -551,6 +553,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setSchedTimePerQ(s.timePerQuestion || 30);
     setSchedDailyTime(s.scheduledTime || "21:00");
     setSchedTargetGroup(s.targetGroupId || "");
+    setSchedReminderMinutes(
+      s.reminderMinutesBefore === undefined ? 60 : s.reminderMinutesBefore
+    );
     const formEl = document.getElementById("schedule-form-container");
     if (formEl) formEl.scrollIntoView({ behavior: "smooth" });
   };
@@ -562,6 +567,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setSchedQuestionCount(25);
     setSchedShuffle(true);
     setSchedUseSetProgression(false);
+    setSchedReminderMinutes(60);
   };
 
   const handleResetScheduleSetProgress = async (s: ScheduledDailyTest) => {
@@ -2089,6 +2095,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           જે ગ્રૂપમાં મોક ટેસ્ટ મોકલવો હોય તે ગ્રૂપ સિલેક્ટ કરો અથવા Chat ID દાખલ કરો.
                         </p>
                       </div>
+                    </div>
+
+                    {/* Upcoming Test Auto-Reminder Selector */}
+                    <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <label className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                          <span>🔔 આગામી ટેસ્ટ રિમાઇન્ડર (Upcoming Test Reminder • 3 મિનિટમાં ઓટો-ડિલીટ)</span>
+                        </label>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                          {schedReminderMinutes === 0
+                            ? "બંધ (Off)"
+                            : schedReminderMinutes >= 1440
+                            ? "આખો દિવસ (ટેસ્ટ શરૂ થાય ત્યાં સુધી)"
+                            : `ટેસ્ટના ${schedReminderMinutes} મિનિટ પહેલાથી`}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { val: 30, label: "30 મિનિટ પહેલાથી" },
+                          { val: 60, label: "60 મિનિટ પહેલાથી (Recommended)" },
+                          { val: 120, label: "2 કલાક પહેલાથી" },
+                          { val: 1440, label: "ટેસ્ટ પહેલા આખો દિવસ" },
+                          { val: 0, label: "બંધ (Off)" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.val}
+                            type="button"
+                            onClick={() => setSchedReminderMinutes(opt.val)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                              schedReminderMinutes === opt.val
+                                ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                                : "bg-white text-amber-900 border-amber-200 hover:bg-amber-100"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-amber-900/80">
+                        જ્યાં સુધી ટેસ્ટ શરૂ ન થાય ત્યાં સુધી ગ્રૂપમાં કાઉન્ટડાઉન રિમાઇન્ડર મોકલાશે અને દરેક રિમાઇન્ડર ૩ મિનિટમાં આપોઆપ ડિલીટ થતું રહેશે.
+                      </p>
                     </div>
 
                     <div className="flex items-center justify-end gap-2 pt-2">

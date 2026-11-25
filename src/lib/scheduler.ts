@@ -12,14 +12,25 @@
 
 import { Question, ScheduledDailyTest, TelegramQuiz } from "@/types";
 import {
+  addPendingDelete,
   getAllServerQuizzes,
   getAllServerSchedules,
+  getAllSessions,
+  getAllUpcomingReminders,
   getServerBotConfig,
+  removePendingDelete,
   savePaperSetDispatch,
   saveServerQuiz,
   saveServerSchedule,
+  saveUpcomingReminder,
 } from "./serverStorage";
-import { dispatchQuizToChat } from "./telegramBotEngine";
+import { acquireRedisLock } from "./kvStore";
+import {
+  clearGroupUpcomingReminder,
+  deleteTelegramMessageSafe,
+  dispatchQuizToChat,
+  sendMessageAndGetId,
+} from "./telegramBotEngine";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -30,7 +41,9 @@ export interface SchedulerRunResult {
   dispatched: Array<{ scheduleId: string; code?: string; error?: string }>;
 }
 
-const getIstParts = (date = new Date()): { day: string; minutes: number } => {
+const getIstParts = (
+  date = new Date()
+): { day: string; minutes: number; seconds: number } => {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: IST_TIME_ZONE,
     year: "numeric",
@@ -38,6 +51,7 @@ const getIstParts = (date = new Date()): { day: string; minutes: number } => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   });
   const parts = formatter.formatToParts(date);
@@ -47,7 +61,18 @@ const getIstParts = (date = new Date()): { day: string; minutes: number } => {
   const day = `${get("year")}-${get("month")}-${get("day")}`;
   const hours = Number(get("hour")) % 24;
   const minutes = Number(get("minute"));
-  return { day, minutes: hours * 60 + minutes };
+  const seconds = Number(get("second")) % 60;
+  return { day, minutes: hours * 60 + minutes, seconds };
+};
+
+const formatTime12h = (time24: string): string => {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(time24 || "").trim());
+  if (!match) return time24;
+  const h = Number(match[1]) % 24;
+  const m = match[2];
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m} ${suffix}`;
 };
 
 const parseScheduledTime = (value: string): number => {
@@ -322,6 +347,12 @@ export const dispatchSchedule = async (
 
   await saveServerSchedule(schedule);
 
+  // Clean up any pending upcoming test reminder in this group now that test started
+  const token = botConfig.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+  if (token) {
+    await clearGroupUpcomingReminder(token, targetGroupId).catch(() => {});
+  }
+
   return { ok: true, code: quiz.code };
 };
 
@@ -337,9 +368,9 @@ export const runDueSchedules = async (
     dispatched: [],
   };
 
-  // Only dispatch if current time is within a 30-minute window of the scheduled time.
-  // This prevents an 08:00 AM test created at night from backfilling and running at 11:00 PM!
-  const MAX_SCHEDULE_TOLERANCE_MINUTES = 30;
+  // Only dispatch if current time is within a 45-minute window of the scheduled time.
+  // Prevents an 08:00 AM test created at night from backfilling and running at 11:00 PM!
+  const MAX_SCHEDULE_TOLERANCE_MINUTES = 45;
 
   for (const schedule of schedules) {
     if (!schedule.isActive) continue;
@@ -358,7 +389,7 @@ export const runDueSchedules = async (
     const diff = minutes - scheduledMinutes;
 
     // If the scheduled time has not arrived yet (diff < 0),
-    // OR if it's more than 30 minutes past the scheduled time (diff > 30), do NOT run!
+    // OR if it's more than 45 minutes past the scheduled time, do NOT run!
     if (diff < 0 || diff > MAX_SCHEDULE_TOLERANCE_MINUTES) {
       continue;
     }
@@ -379,6 +410,11 @@ export const runDueSchedules = async (
       }
     }
 
+    // Atomic distributed guard so concurrent cron ticks never double-dispatch a schedule
+    const lockKey = `sched_run:${schedule.id}:${day}`;
+    const gotLock = await acquireRedisLock(lockKey, 120_000);
+    if (!gotLock) continue;
+
     const dispatch = await dispatchSchedule(schedule, { hostOrigin });
     if (dispatch.ok) {
       result.ran += 1;
@@ -396,3 +432,192 @@ export const runDueSchedules = async (
 
   return result;
 };
+
+/**
+ * Returns milliseconds to wait if an active schedule starts within the next 4 minutes,
+ * allowing cron ticks to sleep cleanly and launch the scheduled quiz at the exact minute.
+ */
+export const getImminentScheduleWaitMs = async (): Promise<number> => {
+  try {
+    const schedules = await getAllServerSchedules();
+    const { day, minutes, seconds } = getIstParts();
+    let minWaitMs = 0;
+
+    for (const schedule of schedules) {
+      if (!schedule.isActive || schedule.lastRunDay === day) continue;
+      const scheduledMinutes = parseScheduledTime(schedule.scheduledTime);
+      if (scheduledMinutes < 0) continue;
+
+      const diffMin = scheduledMinutes - minutes;
+      // Between 1 and 4 minutes away (e.g. tick at 12:56 -> test at 13:00)
+      if (diffMin >= 1 && diffMin <= 4) {
+        const waitMs = Math.max(1000, diffMin * 60_000 - seconds * 1000 + 800);
+        if (minWaitMs === 0 || waitMs < minWaitMs) {
+          minWaitMs = waitMs;
+        }
+      }
+    }
+    return minWaitMs;
+  } catch {
+    return 0;
+  }
+};
+
+export interface UpcomingReminderRunResult {
+  sent: number;
+  scheduledDeletes: Array<{ chatId: number; messageId: number; delayMs: number }>;
+}
+
+const escapeHtmlLocal = (value: unknown): string =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+const REMINDER_INTERVAL_MS = 180_000; // 3 minutes
+
+/**
+ * Sends a clean upcoming-test countdown reminder to groups with scheduled tests
+ * approaching today, refreshing every ~3 minutes and auto-deleting each reminder
+ * after 3 minutes so group chats stay clutter-free until the test begins.
+ */
+export const runUpcomingTestReminders =
+  async (): Promise<UpcomingReminderRunResult> => {
+    const output: UpcomingReminderRunResult = { sent: 0, scheduledDeletes: [] };
+    try {
+      const botConfig = await getServerBotConfig();
+      const token = botConfig.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+      if (!token) return output;
+
+      const [schedules, sessions, existingReminders] = await Promise.all([
+        getAllServerSchedules(),
+        getAllSessions(),
+        getAllUpcomingReminders(),
+      ]);
+
+      const { day, minutes } = getIstParts();
+      const now = Date.now();
+
+      // Group soonest upcoming pending schedule per targetGroupId
+      const soonestByGroup = new Map<
+        string,
+        { schedule: ScheduledDailyTest; minutesLeft: number }
+      >();
+
+      for (const s of schedules) {
+        if (!s.isActive || s.lastRunDay === day) continue;
+        const scheduledMinutes = parseScheduledTime(s.scheduledTime);
+        if (scheduledMinutes < 0) continue;
+
+        const minutesLeft = scheduledMinutes - minutes;
+        if (minutesLeft <= 0) continue;
+
+        // Default reminder window: 60 minutes before scheduled time (0 = off)
+        const windowMin =
+          s.reminderMinutesBefore === undefined
+            ? 60
+            : Math.max(0, Number(s.reminderMinutesBefore));
+        if (windowMin === 0 || minutesLeft > windowMin) continue;
+
+        const groupId = String(s.targetGroupId || botConfig.targetGroupId || "").trim();
+        if (!groupId) continue;
+
+        const prev = soonestByGroup.get(groupId);
+        if (!prev || minutesLeft < prev.minutesLeft) {
+          soonestByGroup.set(groupId, { schedule: s, minutesLeft });
+        }
+      }
+
+      for (const [groupId, { schedule, minutesLeft }] of Array.from(
+        soonestByGroup.entries()
+      )) {
+        // Never send an upcoming reminder while a live quiz is already running in this group
+        const hasActiveQuiz = sessions.some(
+          (sess) =>
+            String(sess.chatId) === groupId && sess.status === "active"
+        );
+        if (hasActiveQuiz) continue;
+
+        const prevReminder = existingReminders.find(
+          (r) => r.groupId === groupId
+        );
+        if (
+          prevReminder &&
+          now - new Date(prevReminder.sentAt).getTime() < REMINDER_INTERVAL_MS - 10_000
+        ) {
+          continue;
+        }
+
+        // Distributed lock so concurrent ticks never send duplicate reminders
+        const lockOk = await acquireRedisLock(
+          `upcoming_rem:${groupId}`,
+          REMINDER_INTERVAL_MS - 15_000
+        );
+        if (!lockOk) continue;
+
+        // Cleanly delete the previous reminder message (ignore any error)
+        if (prevReminder?.messageId) {
+          await deleteTelegramMessageSafe(
+            token,
+            Number(groupId),
+            prevReminder.messageId
+          );
+          await removePendingDelete(
+            `${Number(groupId)}:${prevReminder.messageId}`
+          ).catch(() => {});
+        }
+
+        const timeFormatted = formatTime12h(schedule.scheduledTime);
+        const hoursLeft = Math.floor(minutesLeft / 60);
+        const minsRem = minutesLeft % 60;
+        const countdownText =
+          hoursLeft > 0
+            ? `${hoursLeft} કલાક ${minsRem > 0 ? `${minsRem} મિનિટ` : ""}`.trim()
+            : `${minutesLeft} મિનિટ`;
+
+        const setHint = schedule.useSetProgression
+          ? ` (Set ${(schedule.currentSetIndex || 0) + 1})`
+          : "";
+
+        const text =
+          `⏰ <b>આગામી મોક ટેસ્ટ રિમાઇન્ડર (Upcoming Test)</b> 🔔\n\n` +
+          `📝 <b>ટેસ્ટ:</b> ${escapeHtmlLocal(schedule.title)}${escapeHtmlLocal(setHint)}\n` +
+          (schedule.subject
+            ? `📚 <b>વિષય:</b> ${escapeHtmlLocal(schedule.subject)}\n`
+            : "") +
+          `📊 <b>પ્રશ્નો:</b> ${schedule.questionCount} MCQs • ⏱ <b>${schedule.timePerQuestion} સે./પ્રશ્ન</b>\n` +
+          `🕒 <b>શરૂ થવાનો સમય:</b> ${timeFormatted} IST (<b>${countdownText} બાકી</b>)\n\n` +
+          `📢 <i>તૈયાર રહેજો! થોડી જ વારમાં લાઈવ ક્વિઝ શરૂ થશે.</i>\n` +
+          `🗑️ <i>(આ રિમાઇન્ડર મેસેજ ૩ મિનિટમાં આપોઆપ ડિલીટ થશે)</i>`;
+
+        const sentRes = await sendMessageAndGetId(token, groupId, text);
+        if (sentRes.ok && sentRes.messageId) {
+          const deleteAt = Date.now() + REMINDER_INTERVAL_MS;
+          await saveUpcomingReminder({
+            groupId,
+            scheduleId: schedule.id,
+            messageId: sentRes.messageId,
+            sentAt: new Date().toISOString(),
+            deleteAt,
+          }).catch(() => {});
+
+          await addPendingDelete({
+            id: `${Number(groupId)}:${sentRes.messageId}`,
+            chatId: Number(groupId),
+            messageId: sentRes.messageId,
+            deleteAt,
+          }).catch(() => {});
+
+          output.sent += 1;
+          output.scheduledDeletes.push({
+            chatId: Number(groupId),
+            messageId: sentRes.messageId,
+            delayMs: REMINDER_INTERVAL_MS,
+          });
+        }
+      }
+    } catch {
+      // Zero-error guarantee
+    }
+    return output;
+  };
