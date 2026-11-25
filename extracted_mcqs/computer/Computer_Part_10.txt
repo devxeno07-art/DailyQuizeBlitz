@@ -1,0 +1,1287 @@
+1. MS-word પ્રોગ્રામ કઈ કંપનીએ બનાવ્યો ?
+A) IBM
+B) Intel
+C) Microsoft Corporation
+D) આમાંથી એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Microsoft Corporation
+
+2. નીચેનામાંથી કઈ ફોન્ટ સ્ટાઈલ નથી ?
+A) બોલ્ડ
+B) ઈટાલીક
+C) રેગ્યુલર
+D) સબસ્ક્રીપ્ટ
+Ans: D
+Exp: સાચો જવાબ: સબસ્ક્રીપ્ટ
+
+3. MS word માં ઉમેરેલ ફૂટનોટ ને ON/OFF કરવા માટેનો Footnote કમાંડ કયા મેનુમાં જોવા મળશે ?
+A) File
+B) Insert
+C) Format
+D) View
+Ans: D
+Exp: સાચો જવાબ: View
+
+4. MS—word માં કોઈ શબ્દ પર આડી લીટી (શબ્દ ચેકવા માટે) કરવા માટે કઈ અસર આપવામાં આવે છે ?
+A) Subscript
+B) Superscirpt
+C) Strike through
+D) એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Strike through
+
+5. MS—Word માં ડિલીટ કરેલ લખાણ પાછુ લાવવા માટેની શોર્ટકટ કી ......
+A) Ctrl + B
+B) Ctrl + ZM
+C) Ctrl + X
+D) Ctrl + Y
+Ans: B
+Exp: સાચો જવાબ: Ctrl + ZM
+
+6. word પ્રોગ્રામ બંધ કરવા માટે કયો કમાંડ વપરાય છે ?
+A) close
+B) exit
+C) Stop
+D) quit
+Ans: B
+Exp: સાચો જવાબ: exit
+
+7. MS-word માં Rulerbar નો ઉપયોગ .........
+A) File ને મોટી કરવા
+B) File નો પહોળી કરવા
+C) Margin, page setup અને tab સેટ
+D) ઉપરના તમામ
+Ans: C
+Exp: સાચો જવાબ: Margin, page setup અને tab સેટ
+
+8. વર્લ્ડ એપ્લિકેશન ટેબલની ઉભી હરોળ ને શું કહે છે ?
+A) પોલ
+B) કોલમ
+C) લાઈન
+D) રો
+Ans: B
+Exp: સાચો જવાબ: કોલમ
+
+9. જયારે word માં ફાઈલને પ્રથમ વખત સેવ કરીએ ત્યારે કર્યું ડાયલોગ બોક્ષ ખૂલશે ?
+A) Save
+B) Save as
+C) Copy
+D) એકપણ નહિ
+Ans: B
+Exp: સાચો જવાબ: Save as
+
+10. વર્ડમાં ડિલીટ કી ની મદદથી કર્સરની કઈ બાજુના text ડિલીટ થશે ?
+A) ડાબી
+B) જમણી
+C) ઉપરની
+D) નીચેની
+Ans: B
+Exp: સાચો જવાબ: જમણી
+
+11. ઈન્ડીક ઈનપુટ સોફટવેર મેળવવા માટે કઈ વેબસાઈટ સર્ચ કરશો ?
+A) Indicinput.com
+B) bhasha.com
+C) bhashainput.com
+D) એકપણ નહિ
+Ans: D
+Exp: સાચો જવાબ: એકપણ નહિ
+
+12. MS word 2007 માં Table વધુમાં વધુ કેટલી કોલમ રાખી શકાય ?
+A) 70
+B) 72
+C) 63
+D) 50
+Ans: C
+Exp: સાચો જવાબ: 63
+
+13. Alt + O શોર્ટકટ કી વડે કયુ મેનું ખુલશે ?
+A) File
+B) Format
+C) View
+D) Tools
+Ans: B
+Exp: સાચો જવાબ: Format
+
+14. MS-word 2013 ની ટાઈટલ બારમાં ડોકયુમેન્ટની અને ફાઈલનાં પ્રકારનું નામનું Alignment શું છે ?
+A) Left
+B) Center
+C) Right
+D) એકપણ નહિ
+Ans: B
+Exp: સાચો જવાબ: Center
+
+15. MS-word 2013 માં Screenshot નામનો વિકલ્પ Insert મેનના કયા વિકલ્પમાં જોવા મળે છે ?
+A) Camera
+B) Links
+C) Illustrations
+D) એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Illustrations
+
+16. Word માં Table ના એક Cell માંથી બીજા Cell માં જવા માટે કઈ કી નો ઉપયોગ થાય ?
+A) Shift
+B) tab
+C) home
+D) Cuntrol
+Ans: B
+Exp: સાચો જવાબ: tab
+
+17. Diagram ઓપ્શન MS-word ના ક્યા મેનુંમાં જોવા મળશે ?
+A) File
+B) Insert
+C) View
+D) Edit
+Ans: B
+Exp: સાચો જવાબ: Insert
+
+18. MS-word માં Thesaurus માટેની શોર્ટકટ કી કઈ છે ?
+A) F7
+B) Ctrl + F7
+C) Shift + F7
+D) Alt + F7
+Ans: C
+Exp: સાચો જવાબ: Shift + F7
+
+19. Auto text માટેની શોર્ટકટ કી ......
+A) Alt + F2
+B) Ctrl + F3
+C) Alt + F3
+D) Alt + F4
+Ans: C
+Exp: સાચો જવાબ: Alt + F3
+
+20. નીચેનામાંથી કયા પ્રકારનું પેજ માર્જીન Word 2013 માં જોવા મળતું નથી ?
+A) Narrow
+B) wide
+C) Moderate
+D) extended
+Ans: D
+Exp: સાચો જવાબ: extended
+
+21. Ms—wordમાં પેરેગ્રાફને સિલેકટ કરી Ctrl+5 નામની શોર્ટકટ કી આપતા શું થશે ?
+A) પેરેગ્રાફ સ્પેસિંગ 1.5 cm મી થશે.
+B) પેરેગ્રાફના અક્ષરો વચ્ચેની જગ્યા 1.5 cm ની થશે.
+C) A અને B બંને
+D) એકપણ નહિ
+Ans: D
+Exp: સાચો જવાબ: એકપણ નહિ
+
+22. MS-word માં portrait એ શેનો પ્રકાર છે ?
+A) Page Size
+B) Page Margin
+C) Page Orientation
+D) Page Style
+Ans: C
+Exp: સાચો જવાબ: Page Orientation
+
+23. વાકયના દરેક અક્ષરો "Small Letter" માં દર્શાવવા માટે કયો ઓપ્શન વાપરશો ?
+A) Upper case
+B) Lower case
+C) Title case
+D) Toggle case
+Ans: B
+Exp: સાચો જવાબ: Lower case
+
+24. MS—Word એ સોફટવેરના કયા પેકેજનો હિસ્સો છે ?
+A) MS-windows
+B) MS—world
+C) MS-Office
+D) આમાંથી એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: MS-Office
+
+25. MS—word વિન્ડોની સૌથી નીચેની પટ્ટીને શું કહે છે ?
+A) ટાઈટલ બાર
+B) મેનુબાર
+C) સ્ટેટસ બાર
+D) રૂલર બાર
+Ans: C
+Exp: સાચો જવાબ: સ્ટેટસ બાર
+
+26. MS—word ના કયા મેનુમાં Footnote અને Caption જોવા મળશે ?
+A) Maths
+B) Formula
+C) Sort
+D) Convert
+Ans: A
+Exp: સાચો જવાબ: Maths
+
+27. MSword માં "F12" કી નો ઉપયોગ શું થાય છે ?
+A) ફાઈલ ઓપન કરવા
+B) ફાઈલ કલોઝ કરવા
+C) ફાઈલ Save કરવા
+D) ફાઈલ Save as કરવા
+Ans: D
+Exp: સાચો જવાબ: ફાઈલ Save as કરવા
+
+28. DropCap ના પ્રથમ મોટા અક્ષરને પેજના માર્જીનમાં દર્શાવવામાં માટે કયો વિકલ્પ પસંદ કરશો ?
+A) In Margin
+B) Text Margin
+C) Drop Margin
+D) Set DropCap in Margin
+Ans: A
+Exp: સાચો જવાબ: In Margin
+
+29. Ms-word 2013 માં Cell ના Text ની Text Direction કેટલાં પ્રકારની હોય છે ?
+A) 1
+B) 2
+C) 3
+D) 4
+Ans: C
+Exp: સાચો જવાબ: 3
+
+30. MS—word ની ફાઈલ ડિફોલ્ટ રીતે કયાં સેવ થશે ?
+A) C ડ્રાઈવ
+B) E ડ્રાઈવ
+C) My Document
+D) My Pictures
+Ans: C
+Exp: સાચો જવાબ: My Document
+
+31. MS-word 2013 ના ફોન્ટ મેનુના Text effects & Typography વિક્લ્પમાં Shadow ઓપ્શન નીચેનામાંથી કયા પ્રકારની Shadow effect આપી શકાય છે ?
+A) Internal
+B) external
+C) Perspective
+D) A, B, C ત્રણેય
+Ans: C
+Exp: સાચો જવાબ: Perspective
+
+32. MS—word માં File મેનું ઓપન કરવાની શોર્ટકટ કી કઈ છે ?
+A) Ctrl + F
+B) Alt+F
+C) Alt+O
+D) Ctrl + D
+Ans: B
+Exp: સાચો જવાબ: Alt+F
+
+33. Ctrl + Z શાના માટે વપરાય છે ?
+A) Redo
+B) Cut
+C) Undo
+D) Paste
+Ans: C
+Exp: સાચો જવાબ: Undo
+
+34. Ms—wordમાં વધુમાં વધુ ફોન્ટ સાઈઝ કેટલી આપી શકાય છે ?
+A) 8
+B) 72
+C) 1638
+D) એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: 1638
+
+35. MS-word 2013 માં જેટલો ભાગ Text Area હોય (Margin સિવાયનો) તેમાં Gridlines દર્શાવવા માટે કયા વિકલ્પમાં જશો ?
+A) Views
+B) Reveal
+C) Show
+D) એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Show
+
+36. કઈ ફાઈલ વડે MS-word સ્ટાર્ટ થશે ?
+A) vord.exe
+B) MSword.exe
+C) winword.exe
+D) WRD.exe
+Ans: C
+Exp: સાચો જવાબ: winword.exe
+
+37. MS-word માં લાલ રંગની અંડરલાઈન વાળા શબ્દ પર રાઈટ કિલક કરતાં કયા શબ્દો જોવા મળે ?
+A) સમાનાર્થી
+B) વિરુદ્ધાર્થી
+C) સાચા
+D) ખોટા
+Ans: C
+Exp: સાચો જવાબ: સાચા
+
+38. ફોન્ટને Italic (ત્રાંસા) કવા માટેની શોર્ટકટ કી ......... છે.
+A) Ctrl + B
+B) Alt + I
+C) Ctrl + I
+D) Ctrl + U
+Ans: C
+Exp: સાચો જવાબ: Ctrl + I
+
+39. વર્ડમાં બે કોલમ વચ્ચે ડિફોલ્ટ અંતર કેટલું હોય છે ?
+A) 1.25 cm
+B) 0.5 cm
+C) 0.25"
+D) 0.75"
+Ans: A
+Exp: સાચો જવાબ: 1.25 cm
+
+40. word માં Background ઓપ્શન કયા મેનુમાં હોય છે ?
+A) Insert
+B) File
+C) Table
+D) Format
+Ans: D
+Exp: સાચો જવાબ: Format
+
+41. MS-word માં કર્સરની ડાબી બાજુની માહિતી સિલેકટ કરવા માટેની શોર્ટકટ કી કઈ છે ?
+A) Shift + A
+B) Shift + L
+C) Shift + ↓ ←
+D) Shift + →
+Ans: C
+Exp: સાચો જવાબ: Shift + ↓ ←
+
+42. M.S. Word નીચેનામાંથી કયું page Margin નથી ?
+A) TOP
+B) Left
+C) right
+D) center
+Ans: D
+Exp: સાચો જવાબ: center
+
+43. આપેલ ડોકયુમેન્ટના અલગ અલગ એડીશન ને ટ્રેક કરવા માટે કયા ફિચરનો ઉપયોગ કરશો ?
+A) Editions
+B) Versions
+C) Track
+D) ઉપરના તમામ
+Ans: B
+Exp: સાચો જવાબ: Versions
+
+44. MS—word માં Drop cap માં વધુમાં વધુ લાઈન સાઈઝ કેટલી હોય છે ?
+A) 8
+B) 10
+C) 9
+D) 12
+Ans: B
+Exp: સાચો જવાબ: 10
+
+45. Ms—wordમાં Print કમાંડ વડે ખૂલતા Print dialouge box ના page range વાળા ઓપ્શનમાં – 1 – 3, 5, 6 એમ આપવાથી શું થશે ?
+A) 1, 2, 3, 5, અને 6 નંબરના પેજ પ્રિન્ટ થશે.
+B) માત્ર 1, 2, 3 પેજન પ્રિન્ટ થશે.
+C) આ પ્રકારના ઈનપુટને અમાન્ય ગણશે.
+D) એકપણ નહિ
+Ans: A
+Exp: સાચો જવાબ: 1, 2, 3, 5, અને 6 નંબરના પેજ પ્રિન્ટ થશે.
+
+46. M.S. વર્ડમા કયા ઓપ્શનથી વિન્ડોને અલગ અલગ વિભાગમાં વહેંચી શકાય ?
+A) Section
+B) Parts
+C) Frames
+D) એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Frames
+
+47. MS word માં સિલેકટ કરેલ text માં કેપિટલ લેટર હોય તે સ્મોલ લેટરમાં અને સ્મોલ લેટરને કેપિટલ ફેરવવા માટે શું વપરાય છે ?
+A) Upper case
+B) Lower case
+C) Sentence case
+D) Toggle case
+Ans: D
+Exp: સાચો જવાબ: Toggle case
+
+48. MS-word માં window મેનું ખોલવા માટેની શોર્ટકટ કી ........
+A) Shfit + W
+B) Alt + W
+C) Home + W
+D) Ctrl + W
+Ans: B
+Exp: સાચો જવાબ: Alt + W
+
+49. MS-word માં ફોન્ટ્ની સાઈઝ બદલવા માટેની શોર્ટકટ કી .......
+A) Ctrl + F
+B) Ctrl + Shift + F
+C) Ctrl + Shift + P
+D) એક્પણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Ctrl + Shift + P
+
+50. MS-word માં દરેક માહિતીને સિલેકટ કરવા માટેની શોર્ટકટ કી ......
+A) Ctrl + A
+B) Ctrl + B
+C) Alt + A
+D) Alt + B
+Ans: A
+Exp: સાચો જવાબ: Ctrl + A
+
+51. પ્રિન્ટના ડાયલોગ બોકસમાં પ્રિન્ટ રેન્જમાં 8 આપવાથી શું પ્રિન્ટ થશે ?
+A) Alt + A + O
+B) Alt + O + F
+C) Alt + O + P
+D) Alt + O + S
+Ans: B
+Exp: સાચો જવાબ: Alt + O + F
+
+52. MS-word માં નવી ફાઈલને બનાવવા માટે યો શોર્ટકટ કમાંડ વપરાશે ?
+A) Ctrl + O
+B) Ctrl + N
+C) Ctrl + G
+D) Ctrl + P
+Ans: B
+Exp: સાચો જવાબ: Ctrl + N
+
+53. MS word માં Find ઓપ્શન કયા મેનમાં આવે છે ?
+A) Insert
+B) Edit
+C) Format
+D) View
+Ans: B
+Exp: સાચો જવાબ: Edit
+
+54. MS—word માં પેજ નંબર, લાઈન નંબર વગેરે સ્થિતિ કયાં જોવા મળે છે ?
+A) સ્ટેટસ બાર
+B) મેનુબાર
+C) ટાઈટલ બાર
+D) રૂલરબાર
+Ans: A
+Exp: સાચો જવાબ: સ્ટેટસ બાર
+
+55. કર્સર હોય ત્યાંથી શરૂઆત સુધીની આખી લાઈન સિલેકટ કરવી હોય તો કઈ શોર્ટકટ કી વાપરશો ?
+A) Alt + A + O
+B) Alt + O + F
+C) Alt + O + P
+D) Alt + O + S
+Ans: B
+Exp: સાચો જવાબ: Alt + O + F
+
+56. Ms—word મા સિલેકટેડ ટેકસ્ટનું ફોર્મેટ કોપી કરવા માટે કયો વિકલ્પ છે?
+A) Copy Format
+B) Panit format
+C) Test copy
+D) એકપણ નહિ
+Ans: D
+Exp: સાચો જવાબ: એકપણ નહિ
+
+57. MS—word માં ગ્રામર (વ્યાકરણ) ની ભૂલો દર્શાવવા કયા રંગની વાંકીચૂકી લાઈનનો ઉપયોગ થાય છે ?
+A) લાલ
+B) લીલા
+C) પીળા
+D) જાંબલી
+Ans: B
+Exp: સાચો જવાબ: લીલા
+
+58. MS word 2013 માં Line Sapcing ઓપ્શનમાં કયો લાઈન સ્પેસિંગ શોર્ટકટ જોવા મળતો નથી ?
+A) 1.15
+B) 2.5
+C) 3
+D) 0.5
+Ans: D
+Exp: સાચો જવાબ: 0.5
+
+59. કોઈપણ ચોક્કસ શબ્દની જગ્યાએ બીજો શબ્દ બદલવા કયા વિકલ્પનો ઉપયોગ કરશો ?
+A) Find
+B) Replace
+C) Change
+D) copyle
+Ans: B
+Exp: સાચો જવાબ: Replace
+
+60. MS-word માં કયો ઓપ્શન ટાઈપીંગ વખતે સ્પેલિંગમાં થતી ભૂલો આપમેળે સુધારે છે ?
+A) Auto text
+B) Auto correct
+C) Auto edit
+D) Auto Spell
+Ans: B
+Exp: સાચો જવાબ: Auto correct
+
+61. MS word માં ટેબલ દાખલ કરીએ ત્યારે વધુમાં વધુ કેટલી રો દાખલ કરી શકાય ?
+A) 20
+B) 63
+C) 32767
+D) 256
+Ans: C
+Exp: સાચો જવાબ: 32767
+
+62. MS-word માં Table મેનું માટેની શોર્ટકટ કી કઈ છે ?
+A) Alt + T
+B) Alt + H
+C) Alt + 0
+D) Alt + AEKI
+Ans: D
+Exp: સાચો જવાબ: Alt + AEKI
+
+63. વર્ડ ડોકયુમેન્ટને કેટલા વ્યૂમાં જોઈ શકાય ?
+A) 11
+B) 2
+C) 3
+D) 5
+Ans: D
+Exp: સાચો જવાબ: 5
+
+64. MS-word 2013 માં Paragraph વિકલ્પ કયા મેનુમાં જોવા મળે છે ?
+A) Home
+B) Page Layout
+C) A & B બન્ને
+D) એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: A & B બન્ને
+
+65. કોઈપણ પ્રોગ્રામમાં સબ મેનું કોની નીચે હોય છે ?
+A) મેનુબાર
+B) ટાસ્કબાર
+C) સ્ક્રીન
+D) એકપણ નહિ
+Ans: A
+Exp: સાચો જવાબ: મેનુબાર
+
+66. MS-word માં Page ની ફરતી બોર્ડર દોરવા માટે કયા વિકલ્પની પસંદગી કરશો.
+A) Format → page Border
+B) Format → Border & Shading → Page Border
+C) Insert → Page Border
+D) Insert → Border & shading → page border
+Ans: B
+Exp: સાચો જવાબ: Format → Border & Shading → Page Border
+
+67. MS-word 2013 માં FootNote દાખલ કરવાના ઓપ્શન પર કયો Symbol જોવા મળે છે ?
+A) FN
+B) IF
+C) AB
+D) AB2
+Ans: C
+Exp: સાચો જવાબ: AB
+
+68. Drop cap ઓપ્શન કયા મેનુમાં જોવા મળશે ?
+A) view
+B) Table
+C) File
+D) Format
+Ans: D
+Exp: સાચો જવાબ: Format
+
+69. Word માં પ્રિન્ટ ઓપ્શનમાં Landscape શું છે ?
+A) ફોન્ટ સ્ટાઈલ
+B) પેપર સાઈઝ
+C) પેજ ઓરીએન્ટેશન
+D) પેજ લેઆઉટ
+Ans: C
+Exp: સાચો જવાબ: પેજ ઓરીએન્ટેશન
+
+70. Ms—wordમાં પેરેગ્રાફની લાઈન વચ્ચે ડબલ સ્પેસિંગ રાખવા માટેની શોર્ટકટ કી કઈ છે ?
+A) Ctrl + D
+B) Ctrl + 2
+C) A અને B બંને
+D) એકપણ નહિ
+Ans: B
+Exp: સાચો જવાબ: Ctrl + 2
+
+71. MS-word માં Thumbail કમાંડ કયા મેનુમાં આવશે ?
+A) Edit
+B) View
+C) File
+D) Format
+Ans: B
+Exp: સાચો જવાબ: View
+
+72. MS word માં પેજનું ડિફોલ્ટ ડાબી તરફનું માર્જીન કેટલું હોય છે ?
+A) 1.0"
+B) 1.25"
+C) 1.5"
+D) 2.0"
+Ans: B
+Exp: સાચો જવાબ: 1.25"
+
+73. Cut અને Paste કયા મેનુમા આવે ?
+A) Home
+B) Edit
+C) Insert
+D) Format
+Ans: B
+Exp: સાચો જવાબ: Edit
+
+74. Alt + O વડે વર્ડનું કયું મેનું ઓપન થશે ?
+A) File
+B) Format
+C) Insert
+D) Tools
+Ans: B
+Exp: સાચો જવાબ: Format
+
+75. Undo માટે Ctrl+Z સિવાઈ કઈ શોર્ટકટ કી વાપરી શકાય ?
+A) Alt + A + O
+B) Alt + O + F
+C) Alt + O + P
+D) Alt + O + S
+Ans: B
+Exp: સાચો જવાબ: Alt + O + F
+
+76. word માં ફોર્મેટીંગ ટૂલબારમાં મહત્તમ ફોન્ટ સાઈઝ કેટલી હોય છે ?
+A) 60
+B) 82
+C) 72
+D) 68
+Ans: C
+Exp: સાચો જવાબ: 72
+
+77. Portrait અને Landscape એ શું છે ?
+A) Line numbers
+B) Margins
+C) page size
+D) page orientation
+Ans: D
+Exp: સાચો જવાબ: page orientation
+
+78. MS—word માં કોઈ શબ્દ નીચે લાલ રંગની વાંકીચૂકી લાઈન જોવા મળે તો તે શેની ભૂલ દર્શાવે છે ?
+A) ગ્રામરની ભૂલ
+B) સ્પેલિંગની ભૂલ
+C) નિશાનીની ભૂલ
+D) એકપણ નહિ
+Ans: B
+Exp: સાચો જવાબ: સ્પેલિંગની ભૂલ
+
+79. MS-word 2013 માં Insert મેનુના SmartArt વિકલ્પમાં નીચેનામાંથી કયા પ્રકારનું સ્માર્ટ આર્ટ જોવા નથી મળતું ?
+A) Hierarchy
+B) Matrix
+C) Pie
+D) Process
+Ans: C
+Exp: સાચો જવાબ: Pie
+
+80. નીચેનામાંથી કયું ભાષા સોફટવેર નથી ?
+A) COROL
+B) FORTAN
+C) DOS
+D) JAVA
+Ans: C
+Exp: સાચો જવાબ: DOS
+
+81. MS wordમાં Tableમાં વધુમાં વધુ કેટલી કોલમ રાખી શકાય છે ?
+A) 70
+B) 32767
+C) 63
+D) 256
+Ans: C
+Exp: સાચો જવાબ: 63
+
+82. MS word 2013 ના Instert મેનુના Text વિકલ્પમાં નીચેનામાંથી કયો વિકલ્પ જોવા મળતો નથી ?
+A) Word Art
+B) Warp Text
+C) Drop Cap
+D) Test Box
+Ans: B
+Exp: સાચો જવાબ: Warp Text
+
+83. MS-word માં Text Super Script Hi લખવા માટેની શોર્ટકટ કી ......
+A) Ctrl + S
+B) Ctrl + =
+C) Ctrl + +
+D) Ctrl + *
+Ans: C
+Exp: સાચો જવાબ: Ctrl + +
+
+84. MS-word માં text ને ન્યુઝ્પેપર ની જેમ ઉભી હરોળમાં ગોઠવવા માટે કયો વિકલ્પ પસંદ કરશો ?
+A) Column
+B) Row
+C) Font
+D) Paragraph
+Ans: A
+Exp: સાચો જવાબ: Column
+
+85. Msword ની વિન્ડોમાં ડાબે સૌથી ઉપર જોવા મળતા ઓફિસ બટનના વિકલ્પો ખોલવા માટેની શોર્ટકટ કી કઈ છે ?
+A) Alt + O
+B) Alt + B
+C) Alt + F
+D) એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Alt + F
+
+86. MS word માં excel chart કે MS Paint ને ઉમેરવા માટે કયો વિકલ્પ વપરાય છે ?
+A) Hyperlink
+B) object
+C) caption
+D) comment
+Ans: B
+Exp: સાચો જવાબ: object
+
+87. Ms-word માં જે પેજ પર કર્સર હોય ત્યાંથી એક પેજ નીચે જવા માટે કઈ શોર્ટકટ કી વાપરશો ?
+A) Maths
+B) Formula
+C) Sort
+D) Convert
+Ans: C
+Exp: સાચો જવાબ: Sort
+
+88. Word ની ફાઈલને બંધ કરવા કઈ શોર્ટકટ કી વપરાશે ?
+A) Alt + F4
+B) Ctrl + B
+C) Ctrl + W
+D) Ctrl + V
+Ans: C
+Exp: સાચો જવાબ: Ctrl + W
+
+89. MS word માં ફાઈલને કેટલા ટકા સુધી zoom કરી શકાય છે ?
+A) 10% થી 400%
+B) 50% થી 500%
+C) 10% થી 500%
+D) 100% થી 500%
+Ans: C
+Exp: સાચો જવાબ: 10% થી 500%
+
+90. MS Wordમાં કોઈ પેરેગ્રાફમાં કર્સર રાખીને Shift + End શોર્ટકટ કી આપતાં શું થશે ?
+A) કર્સરની ડાબી બાજુની લાઈન સિલેકટ થશે.
+B) કર્સરની જમણી બાજુની લાઈન સિલેકટ થશે.
+C) કર્સર જે લાઈનમાં હોય તે આખી લાઈન સિલેકટ છે.
+D) કર્સરની જમણી બાજુનો શબ્દ સિલેકટ થશે.
+Ans: A
+Exp: સાચો જવાબ: કર્સરની ડાબી બાજુની લાઈન સિલેકટ થશે.
+
+91. MS—wordમાં કુલ કેટલા પ્રકારના Case હોય છે?
+A) 3
+B) 4
+C) 5
+D) 6
+Ans: C
+Exp: સાચો જવાબ: 5
+
+92. Paste માટેના શોર્ટકટ Ctrl + V ના બદલે બીજી કઈ શોર્ટકટ કી વપરાય છે ?
+A) Shift + end
+B) Shift + enter
+C) Shift + home
+D) આપેલ તમામ
+Ans: B
+Exp: સાચો જવાબ: Shift + enter
+
+93. વર્ડમાં શોર્ટકટ મેનુ લાવવા માટે શું કરશો ?
+A) સિંગલ કિલક
+B) ડબલ કિલક
+C) રાઈટ કિલક
+D) સ્ક્રોલિંગ
+Ans: C
+Exp: સાચો જવાબ: રાઈટ કિલક
+
+94. MS—word માં ટેબલની આડી હરોળને શું કહે છે ?
+A) Column
+B) Row
+C) Box
+D) Cell
+Ans: B
+Exp: સાચો જવાબ: Row
+
+95. MS Wordમાં ફોન્ટની સાઈઝ કેટલી રાખવાથી ફોન્ટની હાઈટ "0.5" મી થાય ?
+A) 36 pt
+B) 48 pt
+C) 60 pt
+D) 7pt
+Ans: A
+Exp: સાચો જવાબ: 36 pt
+
+96. MS-word i Insert u Picture વડે કમ્પ્યૂટરની મેમરી માંથી કોઈ પિકચર દાખલ કરવું હોય તો કયો ઓપ્શન પસંદ કરશો ?
+A) Picture
+B) Clipart
+C) From file
+D) Camera
+Ans: C
+Exp: સાચો જવાબ: From file
+
+97. MS-Word માં નીચેનામાંથી કઈ Text effect નથી ?
+A) Engrave
+B) Bold
+C) Shadow
+D) Small caps
+Ans: B
+Exp: સાચો જવાબ: Bold
+
+98. Ctrl કી સાથે માઉસ ની કિલક કરવાથી શું સિલેકટ થશે ?
+A) શબ્દ
+B) વાકય
+C) પેરેગ્રાફ
+D) પેજ
+Ans: B
+Exp: સાચો જવાબ: વાકય
+
+99. હેડર અને ફૂટર કેટલા પેજમાં આપી શકાય ?
+A) માત્ર પહેલા
+B) માત્ર છેલ્લા
+C) બધા જ
+D) એકેય નહિ
+Ans: C
+Exp: સાચો જવાબ: બધા જ
+
+100. ડોકયુમેન્ટમાં પેજના Top, Button, Left, Right, માર્જિન સેટ કરવા માટે કયો કમાંડ વપરાય છે ?
+A) page
+B) page setup
+C) letter
+D) letter setup
+Ans: B
+Exp: સાચો જવાબ: page setup
+
+101. MS-word માં ટૂંકુ નામ લખવાથી પૂરું નામ આપો આપ લખાઈ જાય એવું કયા ઓપ્શનથી શક્ય બને ?
+A) File
+B) Insert
+C) View
+D) Edit
+Ans: A
+Exp: સાચો જવાબ: File
+
+102. વર્ડમાં પેજના કયા પ્રકારના ઓરીએન્ટેશનમાં પેપરની લંબાઈ કરતાં પહોળાઈ વધુ હોય છે ?
+A) પોર્ટ્રેઈટ
+B) લેન્ડસ્કેપ
+C) ડાયાગોનલ
+D) વર્ટિકલ
+Ans: B
+Exp: સાચો જવાબ: લેન્ડસ્કેપ
+
+103. MS Wordમાં DROP Cap ઓછામાં ઓછી કેટલી લાઈનનો આપી શકાય છે ?
+A) 3
+B) 2
+C) 1
+D) 10
+Ans: C
+Exp: સાચો જવાબ: 1
+
+104. MS—word ના મેનુબાર માં કુલ કેટલા મેનું હોય છે ?
+A) 8
+B) 9
+C) 11
+D) 12
+Ans: B
+Exp: સાચો જવાબ: 9
+
+105. text ના ફોન્ટની સાઈઝ અને પ્રકાર બદલવા કયા ઓપ્શનમાં જશો ?
+A) Tools
+B) Spellings
+C) Paragraph
+D) Fonts
+Ans: D
+Exp: સાચો જવાબ: Fonts
+
+106. કયા વિકલ્પ વડે મોટા ફોન્ટ હોવા છતાં ઓછામાં ઓછી લાઈન સ્પેસીંગ રાખી શકાય ?
+A) Single
+B) Double
+C) Atleast
+D) Defalt
+Ans: C
+Exp: સાચો જવાબ: Atleast
+
+107. માઈક્રોસોફટ વર્ડ એ શું છે ?
+A) ડેટાબેઝ સોફટવેર
+B) વિન્ડોઝ બેઝ સોફટવેર
+C) લીનક્ષ બેઝ સોફટવેર
+D) યુનિકસ બેઝ સોફટવેર
+Ans: B
+Exp: સાચો જવાબ: વિન્ડોઝ બેઝ સોફટવેર
+
+108. વર્ડ એપ્લીકેશનમાં વાકયોની આગળ એરો, ગોળ કે ચોરસ ટપકાં, વગેરે ચિહ્નો હોય તેને શું કહે છે ?
+A) ડોટ
+B) માર્ક
+C) બુલેટ
+D) એરોમાર્ક
+Ans: C
+Exp: સાચો જવાબ: બુલેટ
+
+109. વર્ડમાં ઉપરનું (TOP) માર્જીન ડિફોલ્ટ રીતે કેટલું હોય છે ?
+A) 0.5"
+B) 1.25"
+C) 0.75"
+D) 1.0"
+Ans: D
+Exp: સાચો જવાબ: 1.0"
+
+110. MS-word માં સિલેકટે ફોન્ટની સાઈઝ ધટાડવા માટે કઈ શોર્ટકટ કી વપરાશે ?
+A) Shift + Ctrl + >
+B) Shift + Ctrl + <
+C) Alt + Shift + <
+D) Alt + Ctrl + <
+Ans: B
+Exp: સાચો જવાબ: Shift + Ctrl + <
+
+111. Word માં ફોન્ટની નાનામાં નાની તથા મોટામાં મોટી સાઈઝ કેટલી આપી શકાય ?
+A) 8 થી 200
+B) 1 થી 400
+C) 1 થી 1638
+D) 10 થી 300
+Ans: C
+Exp: સાચો જવાબ: 1 થી 1638
+
+112. વર્ડમાં શબ્દ માટે થિસોરસ અને રીસર્ચ ઓપ્શન કયા મેનુમાં આવે ?
+A) Format
+B) View
+C) Tools
+D) Insert
+Ans: C
+Exp: સાચો જવાબ: Tools
+
+113. વર્ડમાં ડોક્યુમેન્ટના અંત ભાગમાં પહોંચવા માટે કઈ શોર્ટકટ કી વપરાશે ?
+A) End
+B) Ctrl + End
+C) Shift + end
+D) Alt + end
+Ans: B
+Exp: સાચો જવાબ: Ctrl + End
+
+114. Text ને Copy કે Cut કરીને Paste કરવાની શોર્ટકટ કી .............
+A) Ctrl + X
+B) Ctrl + Y
+C) Ctrl + Z
+D) Ctrl + VE
+Ans: D
+Exp: સાચો જવાબ: Ctrl + VE
+
+115. word માં એક સાથે ઘણા બધા વ્યક્તિઓને લેટર મોકલવાની પદ્ધતિને શું કહે છે ?
+A) Macro
+B) Mail Merge
+C) Mail Macro
+D) Mail letter
+Ans: B
+Exp: સાચો જવાબ: Mail Merge
+
+116. MS-word માં પેરેગ્રાફ ને કેટલી પ્રકારના ''અલાઈનમેન્ટ' આપી શકાય ?
+A) બે
+B) ચાર
+C) ત્રણ
+D) પાંચ
+Ans: B
+Exp: સાચો જવાબ: ચાર
+
+117. MS word માં ફાઈલને ઓપન કરવા માટેની શોર્ટકટ કી કઈ છે ?
+A) Alt + O
+B) Ctrl + O
+C) Ctrl + N
+D) Shift + O
+Ans: B
+Exp: સાચો જવાબ: Ctrl + O
+
+118. કમ્પ્યૂટરમાં લેગ્વેજ ઈનપુટ બદલવા કઈ શોર્ટકટ કી વપરાય છે ?
+A) Alt + tab
+B) Alt + T
+C) Alt + Shift
+D) Alt + Esc
+Ans: C
+Exp: સાચો જવાબ: Alt + Shift
+
+119. wordની ફાઈલ વેબપેજ તરીકે સેવ કરીએ તો તે ક્યાં ખૂલશે ?
+A) wordpad
+B) Internet browser
+C) Notepad
+D) wordfile
+Ans: B
+Exp: સાચો જવાબ: Internet browser
+
+120. MS-word માં ફાઇલ ને પ્રિન્ટ લેઆઉટમાં જોવા માટે કયો વિકલ્પ વપરાય છે ?
+A) Print
+B) Print out
+C) Print preview
+D) એક્પણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Print preview
+
+121. MS-word ના ડોકયુમેન્ટની ફાઈલ કેટલી રીતે સેવ કરી શકાય ?
+A) એક
+B) બે
+C) ત્રણ
+D) ચાર
+Ans: C
+Exp: સાચો જવાબ: ત્રણ
+
+122. word માં Auto Save માં વધુમાં વધુ કેટલી મિનીટનો સમય ગોઠવી શકાય ?
+A) 50 મીનીટ
+B) 60 મીનીટ
+C) 120 મીનીટ
+D) 45 મીનીટ
+Ans: C
+Exp: સાચો જવાબ: 120 મીનીટ
+
+123. MS-word 2013 માં editing નામ નો વિકલ્પ કયા મેનુંમા આવે છે ?
+A) Home
+B) Insert
+C) Design
+D) References
+Ans: A
+Exp: સાચો જવાબ: Home
+
+124. MS-word માં Insert મેનું ઓપન કરવા કઈ શોર્ટકટ કી નો ઉપયોગ થશે ?
+A) Shift + I
+B) Ctrl + I
+C) Alt + I
+D) Home + I
+Ans: C
+Exp: સાચો જવાબ: Alt + I
+
+125. Ctrl + A શાના માટે વપરાય છે ?
+A) Cut
+B) Copy
+C) Select all
+D) Paste Cut
+Ans: C
+Exp: સાચો જવાબ: Select all
+
+126. માઉસની કલીક કેટલી વખત પ્રેસ કરવાથી આખો પેરેગ્રાફ સિલેકટ થશે ?
+A) 2
+B) 3
+C) 4
+D) 1
+Ans: B
+Exp: સાચો જવાબ: 3
+
+127. કર્સરને બીજા કયા નામથી ઓળખવામાં આવે છે ?
+A) બ્લીંકર
+B) પોઈન્ટર
+C) ઈર્સ્ટ પોઈન્ટ
+D) ટાઈપીંગ પોઈન્ટ
+Ans: C
+Exp: સાચો જવાબ: ઈર્સ્ટ પોઈન્ટ
+
+128. MS word માં Table મીનીમમ કેટલી Row અને કોલમ હોય છે ?
+A) 2 × 2
+B) 1 × 2
+C) 1 × 1
+D) 3 × 1
+Ans: C
+Exp: સાચો જવાબ: 1 × 1
+
+129. લાઈનની સહેજ ઉપરના અક્ષર ને શું કહેવાય ?
+A) subscript
+B) superscript
+C) EMboss
+D) Shadow
+Ans: B
+Exp: સાચો જવાબ: superscript
+
+130. word માં ઓપન ફાઈલને બંધ કરવા માટે કઈ શોર્ટકટ કી વપરાય છે ?
+A) Alt + F + O
+B) Alt + F+ C
+C) Alt + F+ G
+D) એકપણ નહિ
+Ans: B
+Exp: સાચો જવાબ: Alt + F+ C
+
+131. MS word માં ઘણા બધા પેજ હોય તેને ડાબી બાજુ નાના સ્વરૂપે લીસ્ટમાં જોઈ શકાય તે માટે કયો કમાંડ on કરશો ?
+A) List
+B) Thumbnail
+C) Slide
+D) એકપણ નહિ
+Ans: B
+Exp: સાચો જવાબ: Thumbnail
+
+132. MS-wordજેવા સોફટવેરમાં ઈનપુટ લેંગ્વેજ કઈ છે તે જાણવું હોય ત્યાં કયાં જોવા મળશે ?
+A) ટાઈટલ બારમાં
+B) સ્ટેટસ બારમાં
+C) સ્ક્રોલ બારમાં
+D) મેનુંબારમાં
+Ans: B
+Exp: સાચો જવાબ: સ્ટેટસ બારમાં
+
+133. word માં ડોકયુમેન્ટ ને કેટલા પ્રકારના View માં જોઈ શકાય છે ?
+A) 1
+B) 3
+C) 5
+D) 2
+Ans: C
+Exp: સાચો જવાબ: 5
+
+134. MS word માં ઈન્સર્ટ મેનુના પિક્ચર ઓપ્શનમાં નીચેનામાંથી કયો વિકલ્પ આવતો નથી ?
+A) Maths
+B) Formula
+C) Sort
+D) Convert
+Ans: D
+Exp: સાચો જવાબ: Convert
+
+135. MS-word માં સિલેકટેડ text નીચે લાઈન કરવા માટેની શોર્ટકટ કી વપરાશે ?
+A) Ctrl + R
+B) Ctrl + U
+C) Ctrl + A
+D) Ctrl + C
+Ans: B
+Exp: સાચો જવાબ: Ctrl + U
+
+136. કમ્પ્યૂટરમાં ભાષાના સેટિંગ્સ બદલવા કયાં જશો ?
+A) System tools
+B) Control panel
+C) A & B બંને
+D) એકપણ નહિ
+Ans: B
+Exp: સાચો જવાબ: Control panel
+
+137. પેરેગ્રાફનો પ્રથમ અક્ષર મોટા સ્વરૂપે (Dropped cap) દર્શાવવા કયો કમાંડ વપરાય છે ?
+A) word art
+B) word map
+C) Font art
+D) Drop cap
+Ans: D
+Exp: સાચો જવાબ: Drop cap
+
+138. વર્ડમાં ટેબલમાં ગણતરી કરવા કયું વિકલ્પ છે ?
+A) ફોર્મ્યુલા
+B) એરિયમેટીક
+C) લોજીકલ
+D) મેથેમેટીક
+Ans: A
+Exp: સાચો જવાબ: ફોર્મ્યુલા
+
+139. Rulerbar ને on/off કરવા કયા મેનૂંમાં જશો ?
+A) File
+B) View
+C) Insert
+D) Format
+Ans: B
+Exp: સાચો જવાબ: View
+
+140. ફોન્ટના સેટિંગ માટે ફોન્ટ ઓપ્શન ઓપન કરવા માટે કઈ શોર્ટકટ કી વાપરશો ?
+A) Ctrl + F
+B) Ctrl + D
+C) Ctrl + F + O
+D) Alt + D
+Ans: B
+Exp: સાચો જવાબ: Ctrl + D
+
+141. MS-word માં અલગ અલગ પ્રકારના Shape દાખલ કરવા શું પસંદ કરશો ?
+A) Insert → Autoshaps
+B) Insert → Shapes → Autoshapes
+C) Insert → Pictures → Autoshapes
+D) ઉપરમાંથી એકપણ નહિ
+Ans: C
+Exp: સાચો જવાબ: Insert → Pictures → Autoshapes
+
+142. વર્ડમાં કયા કમાંડની મદદથી એક જ વિન્ડોને અલગ અલગ વિભાગમાં વહેંચી શકાય છે ?
+A) ટેબ્સ
+B) થીમ
+C) ફ્રેમ્સ
+D) પેરેગ્રાફ
+Ans: C
+Exp: સાચો જવાબ: ફ્રેમ્સ
+
+143. નીચેનામાંથી કઈ ભાષામાં ઈન્ડીક ઈનપુટ ઉપલબ્ધ નથી ?
+A) બંગાળી
+B) કન્નડ
+C) નેપાળી
+D) મલયાલમ
+Ans: D
+Exp: સાચો જવાબ: મલયાલમ
+
+144. MS-word માં Find માટેની શોર્ટકટ કી .....
+A) Ctrl + F
+B) Alt + F
+C) Alt + O
+D) Shift + F
+Ans: A
+Exp: સાચો જવાબ: Ctrl + F
+
+145. સિલેકટ કરેલ Text ને કેન્દ્રમાં લાવવા માટે કયો વિકલ્પ વાપરશો ?
+A) Left Allignment
+B) Right Allignment
+C) Center Allignment
+D) Justity Allignment
+Ans: C
+Exp: સાચો જવાબ: Center Allignment
+
+146. H2O ને H 2 O માં ફેરવવા 2 ને કઈ અસર આપવામાં આવશે ?
+A) Alt + T
+B) Alt + H
+C) Alt + 3
+D) Alt + AEKI
+Ans: B
+Exp: સાચો જવાબ: Alt + H
+
+147. MS Word 2013 માં Table ના Cell માં રહેલા Text ને કેટલા પ્રકારના Alignment આપી શકાય છે ?
+A) 4
+B) 6
+C) 9
+D) 5
+Ans: C
+Exp: સાચો જવાબ: 9
+
+148. ડોકયુમેન્ટ ને ફુલસ્ક્રીનમાં જોવા માટે કઈ શોર્ટકટ કી વપરાશે ?
+A) Maths
+B) Formula
+C) Sort
+D) Convert
+Ans: B
+Exp: સાચો જવાબ: Formula
+
+149. MS-word માં Go to માટેની શોર્ટકટ કી કઈ છે ?
+A) File
+B) Insert
+C) View
+D) Edit
+Ans: A
+Exp: સાચો જવાબ: File
+
+150. Go to માટે MS word માં Ctrl + G સિવાયની કઈ કી શોર્ટકટ તરીકે વપરાય છે ?
+A) Alt + T
+B) Alt + H
+C) Alt + 1
+D) Alt + AEKI
+Ans: C
+Exp: સાચો જવાબ: Alt + 1
+
+151. Ctrl + F વડે કયાં કમાંડ ખુલશે ?
+A) Format
+B) File
+C) Find
+D) Figure
+Ans: C
+Exp: સાચો જવાબ: Find
+
+152. પ્રિન્ટ કરવા માટે શોર્ટકટ કી ........... ?
+A) Ctrl + Q
+B) Alt + P
+C) Ctrl + P
+D) Alt + S
+Ans: C
+Exp: સાચો જવાબ: Ctrl + P
+
+153. MS-word માં નવું ડોકયુમેન્ટ બનાવવા માટે કયા મેનું માં જશો ?
+A) Edit
+B) File
+C) View
+D) Format
+Ans: B
+Exp: સાચો જવાબ: File
+
+154. MS—word માં કોઈપણ ફાઈલનું નામ વધુમાં વધુ કેટલા અક્ષરનું આપી શકાય.
+A) 11
+B) 225
+C) 255
+D) 150
+Ans: C
+Exp: સાચો જવાબ: 255
+
+155. નીચેનામાંથી કયો Keyboard નો પ્રકાર ઈન્ડીક ઈનપુટ સોફટવેરમાં જોવા નથી મળતો ?
+A) GujratiInscript
+B) GodrejIndica
+C) Remington Indica
+D) Unicode Indica ind
+Ans: D
+Exp: સાચો જવાબ: Unicode Indica ind
+
+156. નીચેનામાંથી કયો કમાંડ MS—word ના ફાઈલ મેનુનો નથી.
+A) open
+B) save
+C) print
+D) cut
+Ans: D
+Exp: સાચો જવાબ: cut
+
+157. નીચેનામાંથી કયું પેજ માર્જીન છે ?
+A) લેફટ
+B) સેન્ટર
+C) જસ્ટિફાઈ
+D) તમામ
+Ans: A
+Exp: સાચો જવાબ: લેફટ
+
+158. MS—Word માં cut, copy, paste જેવા કાર્યો માટેના શોર્ટકટ કર્યાં જોવા મળશે ?
+A) File
+B) Insert
+C) View
+D) Edit
+Ans: C
+Exp: સાચો જવાબ: View
+
+159. word માં અલગ અલગ શેપમાં લખાતા શબ્દો માટે શું વપરાય છે ?
+A) word art
+B) clip
+C) Clip art
+D) Picture art
+Ans: A
+Exp: સાચો જવાબ: word art
+
+160. MS word 2013માં પેરેગ્રાફના દરેક શબ્દનો પ્રથમ અક્ષર કેપીટલ બનાવવા માટે કર્યો Case ઉપયોગી છે ?
+A) Title Case
+B) Capitalize each word
+C) All Caps
+D) Small Caps
+Ans: B
+Exp: સાચો જવાબ: Capitalize each word
+
+161. word માં ફોર્મેટીંગ ટૂલબારમાં સૌથી ઓછી ફોન્ટ સાઈઝ કેટલી હોય છે ?
+A) 10
+B) 8
+C) 4
+D) 1
+Ans: B
+Exp: સાચો જવાબ: 8
