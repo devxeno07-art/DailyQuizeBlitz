@@ -510,3 +510,45 @@ export const resetPaperSetDispatches = async (
     await kvSetJson(PAPER_SETS_KEY, filtered);
   });
 };
+
+// ==========================================
+// Pending Auto-Delete Messages (during active quiz)
+// ==========================================
+
+export interface PendingDeleteRecord {
+  id: string; // `${chatId}:${messageId}`
+  chatId: number;
+  messageId: number;
+  deleteAt: number;
+}
+
+const PENDING_DELETES_KEY = "pending_deletes.json";
+
+export const getPendingDeletes = async (): Promise<PendingDeleteRecord[]> => {
+  const list = await kvGetJson<PendingDeleteRecord[]>(PENDING_DELETES_KEY, []);
+  return Array.isArray(list) ? list : [];
+};
+
+export const addPendingDelete = async (
+  record: PendingDeleteRecord
+): Promise<void> => {
+  if (!record?.id) return;
+  await withKeyLock(PENDING_DELETES_KEY, async () => {
+    const all = await getPendingDeletes();
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    const fresh = all.filter((r) => r.id !== record.id && r.deleteAt > cutoff);
+    fresh.push(record);
+    await kvSetJson(PENDING_DELETES_KEY, fresh.slice(-500));
+  });
+};
+
+export const removePendingDelete = async (id: string): Promise<void> => {
+  if (!id) return;
+  await withKeyLock(PENDING_DELETES_KEY, async () => {
+    const all = await getPendingDeletes();
+    const next = all.filter((r) => r.id !== id);
+    if (next.length !== all.length) {
+      await kvSetJson(PENDING_DELETES_KEY, next);
+    }
+  });
+};

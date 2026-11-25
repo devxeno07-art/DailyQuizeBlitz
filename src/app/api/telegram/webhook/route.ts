@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   processTelegramUpdate,
   advanceQuizSessions,
+  executeDelayedDelete,
 } from "@/lib/telegramBotEngine";
 import { getServerBotConfig } from "@/lib/serverStorage";
 import { kvGetJson, kvSetJson, withKeyLock } from "@/lib/kvStore";
@@ -82,6 +83,11 @@ export async function POST(req: NextRequest) {
 
     const hostOrigin = req.nextUrl?.origin;
     const result = await processTelegramUpdate(update, hostOrigin);
+
+    if (result.pendingDelete) {
+      const { chatId, messageId, delayMs } = result.pendingDelete;
+      safeWaitUntil(executeDelayedDelete(chatId, messageId, delayMs));
+    }
     
     // Immediate poll advancement check if any session was already due
     const advanced = await advanceQuizSessions().catch(() => ({

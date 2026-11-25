@@ -4,7 +4,9 @@ import {
   processTelegramUpdate,
   finalizeDueSessions,
   advanceQuizSessions,
+  executeDelayedDelete,
 } from "@/lib/telegramBotEngine";
+import { safeWaitUntil } from "@/lib/quizRunner";
 import { isAdminRequest } from "@/lib/adminAuth";
 import { kvGetJson, kvSetJson, withKeyLock } from "@/lib/kvStore";
 
@@ -130,6 +132,10 @@ export async function GET(req: NextRequest) {
         await saveStoredOffset(currentOffset);
 
         const result = await processTelegramUpdate(update, hostOrigin);
+        if (result.pendingDelete) {
+          const { chatId, messageId, delayMs } = result.pendingDelete;
+          safeWaitUntil(executeDelayedDelete(chatId, messageId, delayMs));
+        }
         processed.push({ update_id: update.update_id, res: result });
       }
 

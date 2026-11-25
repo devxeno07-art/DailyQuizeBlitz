@@ -19,6 +19,9 @@ import {
   saveServerBotConfig,
   getServerOverviewStats,
   sessionId,
+  getPendingDeletes,
+  addPendingDelete,
+  removePendingDelete,
 } from "./serverStorage";
 
 export interface BotProcessResult {
@@ -26,6 +29,12 @@ export interface BotProcessResult {
   action?: string;
   chatId?: number;
   text?: string;
+  autoDeleteScheduled?: boolean;
+  pendingDelete?: {
+    chatId: number;
+    messageId: number;
+    delayMs: number;
+  };
 }
 
 interface BotContext {
@@ -58,6 +67,188 @@ const getMaxQuestionsPerRun = (): number => {
 const MAX_QUESTIONS_PER_RUN = getMaxQuestionsPerRun();
 // High-speed, instant next-question transition grace period (100ms)
 export const NEXT_POLL_GRACE_MS = 100;
+// Auto-delete non-admin group messages 15 seconds after sending during an active quiz
+export const AUTO_DELETE_DELAY_MS = 15_000;
+
+const groupAdminsCache = new Map<
+  number,
+  { adminIds: Set<string>; expiresAt: number }
+>();
+
+/**
+ * Deletes a Telegram message silently. Never throws or posts errors if the
+ * bot lacks permission or the message was already deleted.
+ */
+export const deleteTelegramMessageSafe = async (
+  token: string,
+  chatId: number,
+  messageId: number
+): Promise<boolean> => {
+  if (!token || !chatId || !messageId) return false;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    const data = await res.json().catch(() => ({}));
+    return Boolean(data?.ok);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Checks whether a user is a Telegram group admin/creator, cached for 3 minutes.
+ */
+const isTelegramGroupAdmin = async (
+  token: string,
+  chatId: number,
+  userId: string
+): Promise<boolean> => {
+  if (!token || chatId >= 0 || !userId) return false;
+  const now = Date.now();
+  const cached = groupAdminsCache.get(chatId);
+  if (cached && now < cached.expiresAt) {
+    return cached.adminIds.has(userId);
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/getChatAdministrators`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (data?.ok && Array.isArray(data.result)) {
+      const adminIds = new Set<string>();
+      for (const member of data.result) {
+        if (member?.user?.id !== undefined) {
+          adminIds.add(String(member.user.id));
+        }
+      }
+      groupAdminsCache.set(chatId, {
+        adminIds,
+        expiresAt: now + 3 * 60 * 1000,
+      });
+      return adminIds.has(userId);
+    }
+  } catch {
+    // Fail open safely without throwing
+  }
+  return false;
+};
+
+export const executeDelayedDelete = async (
+  chatId: number,
+  messageId: number,
+  delayMs = AUTO_DELETE_DELAY_MS
+): Promise<void> => {
+  try {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    const config = await getServerBotConfig();
+    const token = config.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+    if (!token) return;
+
+    await deleteTelegramMessageSafe(token, chatId, messageId);
+    await removePendingDelete(`${chatId}:${messageId}`).catch(() => {});
+  } catch {
+    // Silent no-error guarantee
+  }
+};
+
+export const processDuePendingDeletes = async (): Promise<number> => {
+  try {
+    const pending = await getPendingDeletes();
+    if (pending.length === 0) return 0;
+
+    const config = await getServerBotConfig();
+    const token = config.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+    if (!token) return 0;
+
+    const now = Date.now();
+    let deleted = 0;
+
+    for (const item of pending) {
+      if (now - item.deleteAt > 60 * 60 * 1000) {
+        await removePendingDelete(item.id).catch(() => {});
+        continue;
+      }
+      if (now >= item.deleteAt) {
+        const ok = await deleteTelegramMessageSafe(
+          token,
+          item.chatId,
+          item.messageId
+        );
+        await removePendingDelete(item.id).catch(() => {});
+        if (ok) deleted += 1;
+      }
+    }
+    return deleted;
+  } catch {
+    return 0;
+  }
+};
+
+const maybeQueueAutoDelete = async (
+  incomingMsg: any,
+  token: string,
+  isBotAdmin: boolean
+): Promise<{ chatId: number; messageId: number; delayMs: number } | undefined> => {
+  try {
+    if (!incomingMsg || !incomingMsg.message_id) return undefined;
+    const chatId = Number(incomingMsg.chat?.id);
+    if (!Number.isFinite(chatId) || chatId >= 0) return undefined; // Only groups/supergroups
+    if (incomingMsg.pinned_message) return undefined; // Never delete pin notifications
+
+    const fromUserId = String(incomingMsg.from?.id || "");
+    const botUserId = token.split(":")[0];
+    if (fromUserId && botUserId && fromUserId === botUserId) return undefined;
+
+    // Protect bot admin and anonymous group admins
+    if (isBotAdmin) return undefined;
+    if (
+      fromUserId === "1087968824" ||
+      Number(incomingMsg.sender_chat?.id) === chatId
+    ) {
+      return undefined;
+    }
+
+    // Only auto-delete when a quiz session is actively running in this group
+    const sessions = await getAllSessions();
+    const hasActiveQuiz = sessions.some(
+      (s) => s.chatId === chatId && s.status === "active"
+    );
+    if (!hasActiveQuiz) return undefined;
+
+    // Also protect Telegram group admins / creators
+    if (fromUserId && (await isTelegramGroupAdmin(token, chatId, fromUserId))) {
+      return undefined;
+    }
+
+    const messageId = Number(incomingMsg.message_id);
+    const deleteAt = Date.now() + AUTO_DELETE_DELAY_MS;
+    await addPendingDelete({
+      id: `${chatId}:${messageId}`,
+      chatId,
+      messageId,
+      deleteAt,
+    }).catch(() => {});
+
+    return { chatId, messageId, delayMs: AUTO_DELETE_DELAY_MS };
+  } catch {
+    return undefined;
+  }
+};
 
 // ==========================================
 // Small helpers
@@ -571,6 +762,7 @@ export const finalizeDueSessions = async (): Promise<number> => {
     );
     if (ok) finalized += 1;
   }
+  await processDuePendingDeletes().catch(() => 0);
   return finalized;
 };
 
@@ -711,6 +903,8 @@ export const advanceQuizSessions = async (): Promise<{
       }
       sent += 1;
     }
+
+    await processDuePendingDeletes().catch(() => 0);
 
     return { sent, errors };
   } finally {
@@ -1181,6 +1375,50 @@ export const processTelegramUpdate = async (
     adminId && (fromUserId === adminId || fromUsername === adminId)
   );
 
+  // If a non-admin posts ANY message in a group while a quiz is active,
+  // queue it for silent 15-second auto-deletion.
+  const pendingDelete = update.message
+    ? await maybeQueueAutoDelete(update.message, token, isAdmin)
+    : undefined;
+
+  const result = await handleTelegramMessageUpdate({
+    update,
+    message,
+    config,
+    token,
+    chatId,
+    fromUser,
+    fromUserId,
+    isAdmin,
+    hostOrigin,
+  });
+
+  return pendingDelete
+    ? { ...result, autoDeleteScheduled: true, pendingDelete }
+    : result;
+};
+
+const handleTelegramMessageUpdate = async ({
+  update,
+  message,
+  config,
+  token,
+  chatId,
+  fromUser,
+  fromUserId,
+  isAdmin,
+  hostOrigin,
+}: {
+  update: any;
+  message: any;
+  config: TelegramBotConfig;
+  token: string;
+  chatId: number;
+  fromUser: any;
+  fromUserId: string;
+  isAdmin: boolean;
+  hostOrigin?: string;
+}): Promise<BotProcessResult> => {
   let text = String(
     message.text || update.callback_query?.data || ""
   ).trim();
