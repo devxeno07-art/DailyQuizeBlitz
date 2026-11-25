@@ -15,6 +15,7 @@ import {
   getAllServerQuizzes,
   getAllServerSchedules,
   getServerBotConfig,
+  savePaperSetDispatch,
   saveServerQuiz,
   saveServerSchedule,
 } from "./serverStorage";
@@ -150,9 +151,39 @@ export const buildQuizFromSchedule = async (
   );
 
   const shouldShuffle = schedule.shuffleQuestions !== false;
-  const selected = shouldShuffle
-    ? shuffle(candidates).slice(0, requested)
-    : candidates.slice(0, requested);
+
+  let selected: Question[];
+  let setMeta: TelegramQuiz["setMeta"] | undefined;
+  let parentPaperId: string | undefined;
+
+  if (schedule.mode === "specific_test" && schedule.useSetProgression) {
+    const totalSets = Math.ceil(candidates.length / requested);
+    const setIdx = Math.max(0, Number(schedule.currentSetIndex) || 0) % totalSets;
+    const startIdx = setIdx * requested;
+    const endIdx = Math.min(candidates.length, startIdx + requested);
+    const batch = candidates.slice(startIdx, endIdx);
+    selected = shouldShuffle ? shuffle(batch) : batch;
+
+    const matchedSource = quizzes.find(
+      (q) =>
+        (schedule.specificTestCode &&
+          q.code?.toUpperCase() === schedule.specificTestCode.toUpperCase()) ||
+        (schedule.specificPaperId && q.paperId === schedule.specificPaperId)
+    );
+    parentPaperId = matchedSource?.paperId || schedule.specificPaperId;
+
+    setMeta = {
+      setNumber: setIdx + 1,
+      totalSets,
+      setSize: requested,
+      startQuestion: startIdx + 1,
+      endQuestion: endIdx,
+    };
+  } else {
+    selected = shouldShuffle
+      ? shuffle(candidates).slice(0, requested)
+      : candidates.slice(0, requested);
+  }
 
   const questions = selected.map((question, index) => ({
     ...question,
@@ -188,13 +219,22 @@ export const buildQuizFromSchedule = async (
     subjectLabel = schedule.subject;
   }
 
+  const baseTitle = schedule.title || defaultTitle;
+  const finalTitle = setMeta
+    ? `${baseTitle} [Set ${setMeta.setNumber}/${setMeta.totalSets} • Q${setMeta.startQuestion}-${setMeta.endQuestion}]`
+    : baseTitle;
+
   const quiz: TelegramQuiz = {
     code,
-    paperId: `sched_${schedule.id}`,
-    title: schedule.title || defaultTitle,
+    paperId: setMeta
+      ? `${parentPaperId || schedule.specificTestCode || schedule.id}::set_${setMeta.setSize}_${setMeta.setNumber}`
+      : `sched_${schedule.id}`,
+    parentPaperId,
+    setMeta,
+    title: finalTitle,
     subject: subjectLabel,
     timePerQuestion: Math.max(
-      10,
+      5,
       Math.min(600, Number(schedule.timePerQuestion) || 30)
     ),
     questions,
@@ -235,7 +275,7 @@ export const dispatchSchedule = async (
   const result = await dispatchQuizToChat({
     quiz,
     chatId: targetGroupId,
-    chatTitle: schedule.title,
+    chatTitle: quiz.title,
     hostOrigin: options.hostOrigin,
     startedBy: { id: "0", name: "Admin Scheduler" },
   });
@@ -249,6 +289,37 @@ export const dispatchSchedule = async (
   schedule.lastRunAt = now.toISOString();
   schedule.lastRunDay = day;
   schedule.lastGeneratedCode = quiz.code;
+
+  if (schedule.useSetProgression && quiz.setMeta) {
+    const keyBase =
+      schedule.specificTestCode?.toUpperCase() ||
+      quiz.parentPaperId ||
+      schedule.specificPaperId ||
+      schedule.id;
+
+    await savePaperSetDispatch({
+      id: `${keyBase}::${quiz.setMeta.setSize}::${quiz.setMeta.setNumber}`,
+      paperId: quiz.parentPaperId || schedule.specificPaperId || keyBase,
+      testCode: schedule.specificTestCode?.toUpperCase(),
+      setSize: quiz.setMeta.setSize,
+      setNumber: quiz.setMeta.setNumber,
+      totalSets: quiz.setMeta.totalSets,
+      startQuestion: quiz.setMeta.startQuestion,
+      endQuestion: quiz.setMeta.endQuestion,
+      quizCode: quiz.code,
+      groupId: targetGroupId,
+      dispatchedAt: now.toISOString(),
+      dispatchedBy: "Daily Scheduler",
+    });
+
+    schedule.currentSetIndex =
+      quiz.setMeta.setNumber >= quiz.setMeta.totalSets
+        ? 0
+        : quiz.setMeta.setNumber;
+    schedule.totalPaperQuestions =
+      quiz.setMeta.totalSets * quiz.setMeta.setSize;
+  }
+
   await saveServerSchedule(schedule);
 
   return { ok: true, code: quiz.code };

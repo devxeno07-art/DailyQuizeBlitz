@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Paper, Question } from "@/types";
 import { deletePaper, savePaper, generateTestCode, fetchCommunityPapers } from "@/lib/storage";
+import { getStudentPaperProgress } from "@/lib/testSets";
 import { SAMPLE_GSRTC_PAPER } from "@/data/samplePaper";
 import { 
   Plus, 
@@ -173,7 +174,7 @@ export const PaperList: React.FC<PaperListProps> = ({
     const now = new Date().toISOString();
     const newId = `paper_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-    const questions: Question[] = sourceQuestions.slice(0, 500).map((q: any, idx: number) => {
+    const questions: Question[] = sourceQuestions.slice(0, 2000).map((q: any, idx: number) => {
       const options = Array.isArray(q?.options)
         ? q.options.map((o: any) => String(o ?? "")).slice(0, 10)
         : [];
@@ -682,6 +683,23 @@ export const PaperList: React.FC<PaperListProps> = ({
                         ></div>
                       </div>
                     )}
+                    {count > 15 && (() => {
+                      const prog = getStudentPaperProgress(paper.id, paper.testCode, user.phoneNumber);
+                      const doneQs = prog.completedIndices.length;
+                      const remQs = Math.max(0, count - doneQs);
+                      return (
+                        <div className="mt-1.5 pt-1.5 border-t border-slate-200/70 flex items-center justify-between text-[10px] font-bold">
+                          <span className="text-indigo-700">📚 Sets (30/40/50)</span>
+                          {doneQs > 0 ? (
+                            <span className="text-emerald-700">
+                              ✅ {doneQs} પૂર્ણ • ⏳ {remQs} બાકી
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">નાના ભાગમાં ટેસ્ટ આપો</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -695,10 +713,10 @@ export const PaperList: React.FC<PaperListProps> = ({
                         onTakeTest(paper);
                       }}
                       className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition-colors"
-                      title="ટેસ્ટ મોડ શરૂ કરો"
+                      title="ટેસ્ટ / સેટ મોડ શરૂ કરો"
                     >
                       <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>ટેસ્ટ આપો</span>
+                      <span>{count > 15 ? "ટેસ્ટ / સેટ્સ" : "ટેસ્ટ આપો"}</span>
                     </button>
 
                     {/* View Leaderboard Results */}

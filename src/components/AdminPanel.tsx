@@ -9,8 +9,10 @@ import {
   TelegramQuiz, 
   TelegramBotConfig, 
   ScheduledDailyTest,
-  ServerOverviewStats
+  ServerOverviewStats,
+  PaperSetDispatchRecord
 } from "@/types";
+import { divideQuestionsIntoSets, QuestionSet } from "@/lib/testSets";
 import { 
   subscribeAllUsers, 
   subscribeAllPapers, 
@@ -66,7 +68,8 @@ import {
   Key,
   Shuffle,
   ListOrdered,
-  Edit3
+  Edit3,
+  RotateCcw
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -182,6 +185,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [schedSubject, setSchedSubject] = useState("");
   const [schedSpecificCode, setSchedSpecificCode] = useState("");
   const [schedShuffle, setSchedShuffle] = useState(true);
+  const [schedUseSetProgression, setSchedUseSetProgression] = useState(false);
   const [schedQuestionCount, setSchedQuestionCount] = useState(25);
   const [schedTimePerQ, setSchedTimePerQ] = useState(30);
   const [schedDailyTime, setSchedDailyTime] = useState("21:00");
@@ -192,6 +196,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [serverCommunityPapers, setServerCommunityPapers] = useState<Paper[]>([]);
   const [testSearchFilter, setTestSearchFilter] = useState("");
+
+  // Test Set Manager State (Divide large tests like 500 MCQs into 30/40/50 sets & track progress)
+  const [setManagerPaper, setSetManagerPaper] = useState<Paper | null>(null);
+  const [setManagerSize, setSetManagerSize] = useState<number>(30);
+  const [setManagerCustomSize, setSetManagerCustomSize] = useState<string>("30");
+  const [setManagerTimePerQ, setSetManagerTimePerQ] = useState<number>(20);
+  const [setManagerShuffle, setSetManagerShuffle] = useState<boolean>(false);
+  const [setManagerTargetGroup, setSetManagerTargetGroup] = useState<string>("");
+  const [setManagerFilter, setSetManagerFilter] = useState<"all" | "pending" | "completed">("all");
+  const [paperSetDispatches, setPaperSetDispatches] = useState<PaperSetDispatchRecord[]>([]);
+  const [dispatchingSetKey, setDispatchingSetKey] = useState<string | null>(null);
 
   // Add Source Paper Form Modal
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
@@ -257,14 +272,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     const loadServerData = async () => {
       try {
-        const [cfgRes, statsRes, schedules, papersRes] = await Promise.all([
+        const [cfgRes, statsRes, schedules, papersRes, setsRes] = await Promise.all([
           fetch("/api/telegram/config", { cache: "no-store" }),
           fetch("/api/admin/stats", { cache: "no-store" }),
           fetchServerScheduledTests().catch(() => [] as ScheduledDailyTest[]),
           fetch("/api/papers", { cache: "no-store" }).catch(() => null),
+          fetch("/api/papers/sets", { cache: "no-store" }).catch(() => null),
         ]);
 
         if (!active) return;
+
+        if (setsRes && setsRes.ok) {
+          const sData = await setsRes.json().catch(() => ({}));
+          if (sData.ok && Array.isArray(sData.records)) {
+            setPaperSetDispatches(sData.records);
+          }
+        }
 
         if (papersRes && papersRes.ok) {
           const pData = await papersRes.json().catch(() => ({}));
@@ -461,6 +484,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const selectedPaper = availableTests.find(
       (t) => (t.testCode || t.id).toUpperCase() === schedSpecificCode.toUpperCase()
     );
+    const existingSched = editingScheduleId
+      ? scheduledTests.find((s) => s.id === editingScheduleId)
+      : undefined;
 
     const newSchedule: ScheduledDailyTest = {
       id: editingScheduleId || `sched_${Date.now()}`,
@@ -481,12 +507,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       specificPaperId:
         schedMode === "specific_test" ? selectedPaper?.id : undefined,
       shuffleQuestions: schedShuffle,
+      useSetProgression: schedMode === "specific_test" ? schedUseSetProgression : false,
+      currentSetIndex: existingSched?.currentSetIndex || 0,
+      totalPaperQuestions: selectedPaper?.questions?.length || existingSched?.totalPaperQuestions,
       questionCount: Number(schedQuestionCount) || 25,
       timePerQuestion: Number(schedTimePerQ) || 30,
       scheduledTime: schedDailyTime,
       isActive: true,
       targetGroupId: schedTargetGroup.trim() || botConfig.targetGroupId || "",
-      createdAt: new Date().toISOString(),
+      createdAt: existingSched?.createdAt || new Date().toISOString(),
     };
     try {
       await saveScheduledDailyTest(newSchedule);
@@ -517,6 +546,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setSchedSubject(s.subject);
     }
     setSchedShuffle(s.shuffleQuestions !== false);
+    setSchedUseSetProgression(Boolean(s.useSetProgression));
     setSchedQuestionCount(s.questionCount || 25);
     setSchedTimePerQ(s.timePerQuestion || 30);
     setSchedDailyTime(s.scheduledTime || "21:00");
@@ -531,6 +561,154 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setSchedMode("specific_test");
     setSchedQuestionCount(25);
     setSchedShuffle(true);
+    setSchedUseSetProgression(false);
+  };
+
+  const handleResetScheduleSetProgress = async (s: ScheduledDailyTest) => {
+    try {
+      await saveScheduledDailyTest({ ...s, currentSetIndex: 0 });
+      const updated = await fetchServerScheduledTests().catch(() =>
+        getLocalScheduledTests()
+      );
+      setScheduledTests(updated);
+    } catch (err: any) {
+      alert(err?.message || "પ્રગતિ રીસેટ થઈ શકી નહીં.");
+    }
+  };
+
+  const refreshPaperSetDispatches = async () => {
+    try {
+      const res = await fetch("/api/papers/sets", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok && Array.isArray(data.records)) {
+        setPaperSetDispatches(data.records);
+      }
+    } catch {}
+  };
+
+  const handleOpenSetManager = (paper: Paper) => {
+    setSetManagerPaper(paper);
+    const total = paper.questions?.length || 0;
+    const defaultSize = total >= 200 ? 50 : total >= 60 ? 30 : 20;
+    setSetManagerSize(defaultSize);
+    setSetManagerCustomSize(String(defaultSize));
+    setSetManagerFilter("all");
+    setSetManagerTargetGroup(schedTargetGroup || botConfig.targetGroupId || "-1004348674260");
+    refreshPaperSetDispatches();
+    setTimeout(() => {
+      document.getElementById("admin-set-manager-panel")?.scrollIntoView({ behavior: "smooth" });
+    }, 60);
+  };
+
+  const handleDispatchSetNow = async (set: QuestionSet) => {
+    if (!setManagerPaper) return;
+    const groupId = setManagerTargetGroup.trim() || botConfig.targetGroupId || "";
+    if (!groupId) {
+      alert("કૃપા કરીને પહેલા Telegram ગ્રૂપ ID સિલેક્ટ કરો.");
+      return;
+    }
+    setDispatchingSetKey(set.key);
+    try {
+      const res = await fetch("/api/papers/sets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "dispatch_set",
+          paperId: setManagerPaper.id,
+          testCode: setManagerPaper.testCode,
+          paperTitle: setManagerPaper.title,
+          subject: setManagerPaper.subject || setManagerPaper.category,
+          setNumber: set.setNumber,
+          setSize: set.setSize,
+          startIndex: set.startIndex,
+          endIndex: set.endIndex,
+          timePerQuestion: setManagerTimePerQ,
+          targetGroupId: groupId,
+          shuffle: setManagerShuffle,
+          fallbackQuestions: setManagerPaper.questions,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        alert(data.error || "સેટ મોકલવામાં ભૂલ આવી.");
+        return;
+      }
+      if (data.quiz) setLastDispatchedQuiz(data.quiz);
+      if (data.record) {
+        setPaperSetDispatches((prev) => [
+          data.record,
+          ...prev.filter((r) => r.id !== data.record.id),
+        ]);
+      }
+    } catch (err: any) {
+      alert(err?.message || "નેટવર્ક એરર.");
+    } finally {
+      setDispatchingSetKey(null);
+    }
+  };
+
+  const handleToggleSetRecord = async (
+    set: QuestionSet,
+    existingRecord?: PaperSetDispatchRecord
+  ) => {
+    if (!setManagerPaper) return;
+    try {
+      if (existingRecord) {
+        const res = await fetch("/api/papers/sets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "mark_pending",
+            id: existingRecord.id,
+          }),
+        });
+        if (res.ok) {
+          setPaperSetDispatches((prev) => prev.filter((r) => r.id !== existingRecord.id));
+        }
+      } else {
+        const res = await fetch("/api/papers/sets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "mark_done",
+            paperId: setManagerPaper.id,
+            testCode: setManagerPaper.testCode,
+            setNumber: set.setNumber,
+            setSize: set.setSize,
+            totalSets: set.totalSets,
+            startQuestion: set.startQuestion,
+            endQuestion: set.endQuestion,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.record) {
+          setPaperSetDispatches((prev) => [
+            data.record,
+            ...prev.filter((r) => r.id !== data.record.id),
+          ]);
+        }
+      }
+    } catch {}
+  };
+
+  const handleResetPaperSets = async () => {
+    if (!setManagerPaper) return;
+    if (!confirm("શું તમે આ પેપરના બધા સેટ્સ ફરીથી 'બાકી (Pending)' કરવા માંગો છો?")) return;
+    try {
+      const res = await fetch("/api/papers/sets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset",
+          paperId: setManagerPaper.id,
+          testCode: setManagerPaper.testCode,
+          setSize: setManagerSize,
+        }),
+      });
+      if (res.ok) {
+        await refreshPaperSetDispatches();
+      }
+    } catch {}
   };
 
   const handleDispatchNow = async (scheduleId: string) => {
@@ -1610,7 +1788,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         </p>
                                       )}
                                     </div>
-                                    <div className="text-right flex-shrink-0">
+                                    <div className="text-right flex-shrink-0 flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenSetManager(t);
+                                        }}
+                                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-xs flex items-center gap-1 transition-all"
+                                        title="આ ટેસ્ટને 30/40/50 ના અલગ સેટ્સમાં વહેંચો અને મોકલો"
+                                      >
+                                        <Layers className="w-3 h-3" />
+                                        <span>સેટ્સમાં વહેંચો</span>
+                                      </button>
                                       <span className="inline-block text-xs font-black font-mono px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
                                         {qCount} MCQs
                                       </span>
@@ -1790,6 +1980,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           ક્રમ અનુસાર પસંદ કરવાથી હંમેશા પેપરના ૧ થી N સુધીના પ્રશ્નો ક્રમવાર રહેશે.
                         </p>
                       </div>
+
+                      {schedMode === "specific_test" && (
+                        <div className="sm:col-span-2 pt-3 border-t border-slate-100">
+                          <label className="flex items-start gap-3 p-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 cursor-pointer hover:bg-indigo-50 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={schedUseSetProgression}
+                              onChange={(e) => setSchedUseSetProgression(e.target.checked)}
+                              className="mt-0.5 w-4 h-4 accent-indigo-600 rounded"
+                            />
+                            <div className="flex-1">
+                              <div className="font-bold text-xs text-indigo-950 flex items-center gap-1.5 flex-wrap">
+                                <span>🔁 ક્રમશઃ સેટ મોડ (Auto Set Progression — 500 MCQ માંથી રોજ અલગ સેટ)</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-600 text-white">
+                                  Advanced
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-indigo-800/80 mt-0.5">
+                                ચાલુ રાખવાથી દરરોજ અલગ સેટ મોકલાશે (દા.ત. દિવસ-૧: Q1–{schedQuestionCount}, દિવસ-૨: Q{schedQuestionCount + 1}–{schedQuestionCount * 2}...). કોઈ પ્રશ્ન રિપીટ નહીં થાય!
+                              </p>
+                            </div>
+                          </label>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1902,6 +2116,354 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </form>
                 </div>
 
+                {/* Test Set Manager Panel (500 MCQ -> 30/40/50 Sets + Remaining Tracker) */}
+                {setManagerPaper && (() => {
+                  const allQs = setManagerPaper.questions || [];
+                  const baseKey = setManagerPaper.testCode || setManagerPaper.id;
+                  const sets = divideQuestionsIntoSets(baseKey, allQs, setManagerSize);
+                  const relevantRecords = paperSetDispatches.filter(
+                    (r) =>
+                      (r.paperId && r.paperId === setManagerPaper.id) ||
+                      (setManagerPaper.testCode &&
+                        r.testCode &&
+                        r.testCode.toUpperCase() === setManagerPaper.testCode.toUpperCase())
+                  );
+                  const getSetRecord = (s: QuestionSet) =>
+                    relevantRecords.find(
+                      (r) => r.setSize === s.setSize && r.setNumber === s.setNumber
+                    );
+
+                  const doneCount = sets.filter((s) => Boolean(getSetRecord(s))).length;
+                  const remainingCount = sets.length - doneCount;
+                  const doneQuestionsCount = sets.reduce(
+                    (sum, s) => (getSetRecord(s) ? sum + s.questionCount : sum),
+                    0
+                  );
+                  const remainingQuestionsCount = Math.max(0, allQs.length - doneQuestionsCount);
+                  const nextRemainingSet = sets.find((s) => !getSetRecord(s)) || null;
+                  const progressPct =
+                    allQs.length > 0
+                      ? Math.min(100, Math.round((doneQuestionsCount / allQs.length) * 100))
+                      : 0;
+
+                  const visibleSets = sets.filter((s) => {
+                    const isDone = Boolean(getSetRecord(s));
+                    if (setManagerFilter === "pending") return !isDone;
+                    if (setManagerFilter === "completed") return isDone;
+                    return true;
+                  });
+
+                  return (
+                    <div
+                      id="admin-set-manager-panel"
+                      className="rounded-3xl bg-gradient-to-br from-indigo-50 via-white to-sky-50 border-2 border-indigo-300 p-4 sm:p-6 space-y-4 shadow-lg animate-fadeIn"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider">
+                              📦 Test Set Manager
+                            </span>
+                            <span className="font-mono text-xs font-bold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-md">
+                              {setManagerPaper.testCode || setManagerPaper.id}
+                            </span>
+                          </div>
+                          <h5 className="font-bold text-slate-900 text-sm sm:text-base mt-1">
+                            {setManagerPaper.title} ({allQs.length} MCQs)
+                          </h5>
+                          <p className="text-[11px] text-slate-500">
+                            મોટી ટેસ્ટને ૩૦, ૪૦ કે ૫૦ ના નાના સેટ્સમાં વહેંચો, કયો સેટ ગ્રૂપમાં મોકલાયો છે અને કયો બાકી છે તે ટ્રેક કરો.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSetManagerPaper(null)}
+                          className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-800"
+                          title="બંધ કરો"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Progress Overview */}
+                      <div className="p-3.5 rounded-2xl bg-white border border-slate-200 space-y-2.5">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                            <div className="text-[10px] text-slate-500 font-bold">કુલ પ્રશ્નો</div>
+                            <div className="text-sm font-black font-mono text-slate-900">{allQs.length}</div>
+                          </div>
+                          <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200">
+                            <div className="text-[10px] text-indigo-700 font-bold">કુલ સેટ્સ</div>
+                            <div className="text-sm font-black font-mono text-indigo-900">{sets.length} Sets</div>
+                          </div>
+                          <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                            <div className="text-[10px] text-emerald-700 font-bold">✅ મોકલાયેલ (Done)</div>
+                            <div className="text-sm font-black font-mono text-emerald-800">
+                              {doneCount} Sets ({doneQuestionsCount} Qs)
+                            </div>
+                          </div>
+                          <div className="p-2 rounded-xl bg-amber-50 border border-amber-200">
+                            <div className="text-[10px] text-amber-700 font-bold">⏳ બાકી (Remaining)</div>
+                            <div className="text-sm font-black font-mono text-amber-800">
+                              {remainingCount} Sets ({remainingQuestionsCount} Qs)
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold">
+                            <span className="text-slate-600">કુલ પૂર્ણતા ({doneCount}/{sets.length} Sets)</span>
+                            <span className="text-indigo-700 font-mono">{progressPct}%</span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Controls: Set Size + Group + Timer + Shuffle */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-white border border-slate-200 text-xs">
+                        <div className="space-y-1.5">
+                          <label className="font-bold text-slate-800 block">
+                            દરેક સેટની સાઈઝ (MCQs per Set):
+                          </label>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {[20, 25, 30, 40, 50, 100].map((sz) => (
+                              <button
+                                key={sz}
+                                type="button"
+                                onClick={() => {
+                                  setSetManagerSize(sz);
+                                  setSetManagerCustomSize(String(sz));
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                                  setManagerSize === sz
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                                }`}
+                              >
+                                {sz}
+                              </button>
+                            ))}
+                            <input
+                              type="number"
+                              min={5}
+                              max={Math.max(5, allQs.length)}
+                              value={setManagerCustomSize}
+                              onChange={(e) => {
+                                setSetManagerCustomSize(e.target.value);
+                                const v = Number(e.target.value);
+                                if (v >= 5) setSetManagerSize(Math.min(v, allQs.length || v));
+                              }}
+                              className="w-14 px-2 py-1 rounded-lg border border-slate-300 font-mono font-bold text-xs text-center"
+                              placeholder="30"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="font-bold text-slate-800 block">
+                            ટાર્ગેટ ગ્રૂપ & ટાઈમર:
+                          </label>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSetManagerTargetGroup("-1004348674260")}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
+                                setManagerTargetGroup === "-1004348674260"
+                                  ? "bg-sky-600 text-white border-sky-600"
+                                  : "bg-slate-50 text-slate-700 border-slate-200"
+                              }`}
+                            >
+                              💥 GPSC Exams
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSetManagerTargetGroup("-1003919156629")}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
+                                setManagerTargetGroup === "-1003919156629"
+                                  ? "bg-amber-600 text-white border-amber-600"
+                                  : "bg-slate-50 text-slate-700 border-slate-200"
+                              }`}
+                            >
+                              🧪 ટેસ્ટ ગ્રૂપ
+                            </button>
+                            <div className="flex items-center gap-1 ml-auto">
+                              <Clock className="w-3.5 h-3.5 text-slate-500" />
+                              <input
+                                type="number"
+                                min={5}
+                                max={600}
+                                value={setManagerTimePerQ}
+                                onChange={(e) => setSetManagerTimePerQ(Math.max(5, Number(e.target.value)))}
+                                className="w-12 px-1.5 py-1 rounded-lg border border-slate-300 font-mono font-bold text-xs text-center"
+                              />
+                              <span className="text-[10px] text-slate-500">sec</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSetManagerShuffle(!setManagerShuffle)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1 ${
+                                setManagerShuffle
+                                  ? "bg-amber-50 border-amber-300 text-amber-800"
+                                  : "bg-slate-50 border-slate-200 text-slate-700"
+                              }`}
+                            >
+                              <Shuffle className="w-3 h-3" />
+                              <span>{setManagerShuffle ? "સેટમાં શફલ થશે" : "ક્રમ અનુસાર (Q1→N)"}</span>
+                            </button>
+
+                            {doneCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleResetPaperSets}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>રીસેટ ({setManagerSize}s)</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {nextRemainingSet && (
+                            <button
+                              type="button"
+                              disabled={dispatchingSetKey === nextRemainingSet.key}
+                              onClick={() => handleDispatchSetNow(nextRemainingSet)}
+                              className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-xs shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>
+                                {dispatchingSetKey === nextRemainingSet.key
+                                  ? "મોકલાઈ રહ્યું છે..."
+                                  : `⚡ આગલો બાકી સેટ મોકલો: ${nextRemainingSet.label}`}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Filter Tabs + Set Cards Grid */}
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="font-bold text-slate-900 text-xs">
+                            સેટ્સની યાદી ({visibleSets.length})
+                          </span>
+                          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-[11px] font-bold">
+                            <button
+                              type="button"
+                              onClick={() => setSetManagerFilter("all")}
+                              className={`px-2.5 py-1 rounded-lg ${
+                                setManagerFilter === "all" ? "bg-slate-800 text-white" : "text-slate-600"
+                              }`}
+                            >
+                              બધા ({sets.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSetManagerFilter("pending")}
+                              className={`px-2.5 py-1 rounded-lg ${
+                                setManagerFilter === "pending" ? "bg-amber-500 text-white" : "text-slate-600"
+                              }`}
+                            >
+                              ⏳ બાકી ({remainingCount})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSetManagerFilter("completed")}
+                              className={`px-2.5 py-1 rounded-lg ${
+                                setManagerFilter === "completed" ? "bg-emerald-600 text-white" : "text-slate-600"
+                              }`}
+                            >
+                              ✅ પૂર્ણ ({doneCount})
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-72 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
+                          {visibleSets.map((s) => {
+                            const rec = getSetRecord(s);
+                            const isDone = Boolean(rec);
+                            const isSending = dispatchingSetKey === s.key;
+                            return (
+                              <div
+                                key={s.key}
+                                className={`p-3 rounded-2xl border flex items-center justify-between gap-2 ${
+                                  isDone
+                                    ? "bg-emerald-50/70 border-emerald-200"
+                                    : "bg-white border-slate-200"
+                                }`}
+                              >
+                                <div className="min-w-0 space-y-0.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                                        isDone
+                                          ? "bg-emerald-600 text-white"
+                                          : "bg-indigo-100 text-indigo-800"
+                                      }`}
+                                    >
+                                      Set {s.setNumber}
+                                    </span>
+                                    <span className="font-bold text-slate-900 text-xs">
+                                      Q{s.startQuestion}–{s.endQuestion} ({s.questionCount} Qs)
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px]">
+                                    {isDone ? (
+                                      <span className="text-emerald-800 font-semibold">
+                                        ✅ મોકલાયેલ {rec?.quizCode ? `(${rec.quizCode})` : ""}
+                                      </span>
+                                    ) : (
+                                      <span className="text-amber-700 font-semibold">
+                                        ⏳ બાકી છે (Remaining)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleSetRecord(s, rec)}
+                                    className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-600"
+                                    title={isDone ? "ફરીથી બાકી (Pending) માર્ક કરો" : "પૂર્ણ (Done) માર્ક કરો"}
+                                  >
+                                    {isDone ? "↺ બાકી" : "✓ પૂર્ણ"}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={isSending}
+                                    onClick={() => handleDispatchSetNow(s)}
+                                    className={`px-2.5 py-1.5 rounded-lg font-bold text-[11px] flex items-center gap-1 disabled:opacity-50 ${
+                                      isDone
+                                        ? "bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                                    }`}
+                                  >
+                                    <Send className="w-3 h-3" />
+                                    <span>{isSending ? "..." : isDone ? "ફરી મોકલો" : "મોકલો"}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Existing Schedules Table */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -1947,6 +2509,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                                 {s.shuffleQuestions !== false ? "🔀 શફલ" : "🔢 ક્રમ અનુસાર"}
                               </span>
+                              {s.useSetProgression && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200 flex items-center gap-1">
+                                  <span>🔁 આગામી: Set {(s.currentSetIndex || 0) + 1}</span>
+                                  {(s.currentSetIndex || 0) > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleResetScheduleSetProgress(s);
+                                      }}
+                                      className="underline text-indigo-900 ml-1 hover:text-rose-700"
+                                      title="Set 1 પર રીસેટ કરો"
+                                    >
+                                      (Reset)
+                                    </button>
+                                  )}
+                                </span>
+                              )}
                               <span
                                 onClick={() => handleToggleScheduleActive(s)}
                                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer transition-colors ${

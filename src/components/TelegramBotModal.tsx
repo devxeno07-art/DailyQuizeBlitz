@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { Paper, TelegramQuiz, TelegramBotConfig } from "@/types";
+import { Paper, PaperSetDispatchRecord, TelegramQuiz, TelegramBotConfig } from "@/types";
 import { saveTelegramQuiz, getTelegramBotConfig } from "@/lib/storage";
+import { divideQuestionsIntoSets } from "@/lib/testSets";
 import { useAuth } from "@/context/AuthContext";
 import { 
   Send, 
@@ -44,9 +45,15 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
   const [testTitle, setTestTitle] = useState<string>(paper?.title || "સ્પર્ધાત્મક પરીક્ષા મોક ટેસ્ટ");
   const [testSubject, setTestSubject] = useState<string>(paper?.subject || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ");
   const [timePerQuestion, setTimePerQuestion] = useState<number>(30);
-  const [questionCount, setQuestionCount] = useState<number | "all">("all");
+  const [questionCount, setQuestionCount] = useState<number | "all" | "sets">("all");
   const [selectionMode, setSelectionMode] = useState<"original" | "random">("original");
   const [customCountInput, setCustomCountInput] = useState<string>("");
+
+  // Set Splitter State
+  const [setSize, setSetSize] = useState<number>(30);
+  const [customSetSizeInput, setCustomSetSizeInput] = useState<string>("30");
+  const [selectedSetNumber, setSelectedSetNumber] = useState<number>(1);
+  const [setDispatches, setSetDispatches] = useState<PaperSetDispatchRecord[]>([]);
 
   // Generated Result State
   const [generatedQuiz, setGeneratedQuiz] = useState<TelegramQuiz | null>(null);
@@ -59,6 +66,15 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
   const [botConfig, setBotConfig] = useState<TelegramBotConfig>(() =>
     getTelegramBotConfig()
   );
+
+  // Active target paper
+  const activePaper = (selectedPaperId ? papers.find(p => p.id === selectedPaperId) : paper) || papers[0];
+
+  const paperSets = useMemo(() => {
+    if (!activePaper?.questions?.length) return [];
+    const baseKey = activePaper.testCode || activePaper.id;
+    return divideQuestionsIntoSets(baseKey, activePaper.questions, setSize);
+  }, [activePaper, setSize]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -80,10 +96,28 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     };
   }, [isOpen]);
 
-  if (!isOpen || !user) return null;
+  useEffect(() => {
+    if (!isOpen || !activePaper) return;
+    let active = true;
+    const params = new URLSearchParams();
+    if (activePaper.id) params.set("paperId", activePaper.id);
+    if (activePaper.testCode) params.set("testCode", activePaper.testCode);
 
-  // Active target paper
-  const activePaper = (selectedPaperId ? papers.find(p => p.id === selectedPaperId) : paper) || papers[0];
+    fetch(`/api/papers/sets?${params.toString()}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.ok && Array.isArray(data.records)) {
+          setSetDispatches(data.records);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, activePaper?.id, activePaper?.testCode]);
+
+  if (!isOpen || !user) return null;
 
   const handlePaperChange = (paperId: string) => {
     setSelectedPaperId(paperId);
@@ -91,10 +125,23 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     if (chosen) {
       setTestTitle(chosen.title);
       setTestSubject(chosen.subject || chosen.category);
-      setQuestionCount("all");
+      setQuestionCount(chosen.questions?.length > 50 ? "sets" : "all");
       setCustomCountInput("");
+      setSelectedSetNumber(1);
     }
   };
+
+  const activeSetObj =
+    questionCount === "sets"
+      ? paperSets.find((s) => s.setNumber === selectedSetNumber) || paperSets[0] || null
+      : null;
+
+  const effectiveQuestionCount =
+    questionCount === "sets" && activeSetObj
+      ? activeSetObj.questionCount
+      : questionCount === "all"
+      ? activePaper?.questions?.length || 0
+      : Math.min(Number(questionCount) || activePaper?.questions?.length || 0, activePaper?.questions?.length || 0);
 
   const handleGenerateCode = async () => {
     if (!activePaper || !activePaper.questions || activePaper.questions.length === 0) {
@@ -103,19 +150,41 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     }
 
     let finalQuestions = [...activePaper.questions];
+    let setMeta: TelegramQuiz["setMeta"] | undefined;
+    let finalTitle = testTitle.trim() || activePaper.title;
 
-    // If random mode is chosen, shuffle questions
-    if (selectionMode === "random") {
-      finalQuestions = finalQuestions
-        .map((q) => ({ q, sort: Math.random() }))
-        .sort((a, b) => a.sort - b.sort)
-        .map(({ q }) => q);
-    }
+    if (questionCount === "sets" && activeSetObj) {
+      finalQuestions = [...activeSetObj.questions];
+      if (selectionMode === "random") {
+        finalQuestions = finalQuestions
+          .map((q) => ({ q, sort: Math.random() }))
+          .sort((a, b) => a.sort - b.sort)
+          .map(({ q }) => q);
+      }
+      setMeta = {
+        setNumber: activeSetObj.setNumber,
+        totalSets: activeSetObj.totalSets,
+        setSize: activeSetObj.setSize,
+        startQuestion: activeSetObj.startQuestion,
+        endQuestion: activeSetObj.endQuestion,
+      };
+      if (!finalTitle.includes(`[Set `)) {
+        finalTitle = `${finalTitle} [${activeSetObj.label}]`;
+      }
+    } else {
+      // If random mode is chosen, shuffle questions
+      if (selectionMode === "random") {
+        finalQuestions = finalQuestions
+          .map((q) => ({ q, sort: Math.random() }))
+          .sort((a, b) => a.sort - b.sort)
+          .map(({ q }) => q);
+      }
 
-    // If a limited number of questions is chosen, slice
-    if (questionCount !== "all") {
-      const limit = Math.min(finalQuestions.length, Math.max(1, Number(questionCount) || finalQuestions.length));
-      finalQuestions = finalQuestions.slice(0, limit);
+      // If a limited number of questions is chosen, slice
+      if (questionCount !== "all") {
+        const limit = Math.min(finalQuestions.length, Math.max(1, Number(questionCount) || finalQuestions.length));
+        finalQuestions = finalQuestions.slice(0, limit);
+      }
     }
 
     // Generate readable, memorable test code (e.g. GPSC-4921, EXAM-4921 or TEST-8391)
@@ -128,11 +197,18 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
       }
     }
     const quizCode = `${prefix}-${randomDigits}`;
+    const isSubset = Boolean(setMeta) || (questionCount !== "all" && finalQuestions.length < activePaper.questions.length);
 
     const newQuiz: TelegramQuiz = {
       code: quizCode,
-      paperId: activePaper.id,
-      title: testTitle.trim() || activePaper.title,
+      paperId: setMeta
+        ? `${activePaper.id}::set_${setMeta.setSize}_${setMeta.setNumber}`
+        : isSubset
+        ? `${activePaper.id}::set_${finalQuestions.length}_${randomDigits}`
+        : activePaper.id,
+      parentPaperId: isSubset ? activePaper.id : undefined,
+      setMeta,
+      title: finalTitle,
       subject: testSubject.trim() || activePaper.subject,
       timePerQuestion: Number(timePerQuestion) || 30,
       questions: finalQuestions,
@@ -143,6 +219,34 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
     await saveTelegramQuiz(newQuiz);
     setGeneratedQuiz(newQuiz);
+
+    if (setMeta) {
+      try {
+        const res = await fetch("/api/papers/sets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "record_quiz_set",
+            paperId: activePaper.id,
+            testCode: activePaper.testCode,
+            setNumber: setMeta.setNumber,
+            setSize: setMeta.setSize,
+            totalSets: setMeta.totalSets,
+            startQuestion: setMeta.startQuestion,
+            endQuestion: setMeta.endQuestion,
+            quizCode: newQuiz.code,
+            dispatchedBy: user.name,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.record) {
+          setSetDispatches((prev) => [
+            data.record,
+            ...prev.filter((r) => r.id !== data.record.id),
+          ]);
+        }
+      } catch {}
+    }
   };
 
   const handleCopyCode = () => {
@@ -350,10 +454,10 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
               </div>
 
               <div className="text-[10px] text-slate-400 flex items-center justify-between">
-                <span>💡 લઘુત્તમ 10 થી મહત્તમ 600 સેકન્ડ સુધી કોઈપણ સમય જાતે ટાઈપ કરી શકો છો.</span>
+                <span>💡 લઘુત્તમ 5 થી મહત્તમ 600 સેકન્ડ સુધી કોઈપણ સમય જાતે ટાઈપ કરી શકો છો.</span>
                 {activePaper?.questions?.length ? (
                   <span className="font-medium text-slate-500">
-                    કુલ સમય: ~{Math.ceil(((timePerQuestion || 30) * (questionCount === "all" ? activePaper.questions.length : Math.min(Number(questionCount) || activePaper.questions.length, activePaper.questions.length))) / 60)} મિનિટ
+                    કુલ સમય: ~{Math.ceil(((timePerQuestion || 30) * effectiveQuestionCount) / 60)} મિનિટ
                   </span>
                 ) : null}
               </div>
@@ -400,22 +504,40 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
               </div>
             </div>
 
-            {/* Question Count Selector */}
-            <div className="space-y-2 pt-1 border-t border-slate-200">
+            {/* Question Count Selector + Set Mode */}
+            <div className="space-y-2.5 pt-1 border-t border-slate-200">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-sky-600" />
-                  <span>ટેસ્ટમાં કેટલા પ્રશ્નો રાખવા? (Question Count)</span>
+                  <span>ટેસ્ટમાં કેટલા પ્રશ્નો રાખવા? / સેટ્સ બનાવો</span>
                 </label>
                 <span className="text-[11px] font-bold font-mono text-sky-700 bg-sky-100/70 border border-sky-200 px-2 py-0.5 rounded-md">
-                  {questionCount === "all"
+                  {questionCount === "sets" && activeSetObj
+                    ? `${activeSetObj.label} • ${activeSetObj.questionCount} Qs`
+                    : questionCount === "all"
                     ? `બધા (${activePaper?.questions?.length || 0}) પ્રશ્નો`
                     : `${questionCount} પ્રશ્નો (કુલ ${activePaper?.questions?.length || 0} માંથી)`}
                 </span>
               </div>
 
-              {/* Quick Select Chips + Custom Input */}
+              {/* Quick Select Chips + Sets Mode + Custom Input */}
               <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuestionCount("sets");
+                    setCustomCountInput("");
+                  }}
+                  className={`py-1.5 px-3 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 ${
+                    questionCount === "sets"
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-500/20"
+                      : "bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100"
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>📚 સેટ્સ (30/40/50)</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -457,24 +579,117 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                   <input
                     type="number"
                     min={1}
-                    max={activePaper?.questions?.length || 100}
+                    max={activePaper?.questions?.length || 1000}
                     value={customCountInput}
                     onChange={(e) => {
                       const val = e.target.value;
                       setCustomCountInput(val);
                       const parsed = parseInt(val, 10);
                       if (!isNaN(parsed) && parsed > 0) {
-                        const capped = Math.min(parsed, activePaper?.questions?.length || 100);
+                        const capped = Math.min(parsed, activePaper?.questions?.length || 1000);
                         setQuestionCount(capped);
                       } else if (val === "") {
                         setQuestionCount("all");
                       }
                     }}
-                    placeholder="દા.ત. 15"
+                    placeholder="દા.ત. 40"
                     className="w-16 px-2 py-1 text-xs font-bold font-mono text-center rounded-lg border border-slate-300 focus:border-sky-500 focus:outline-none"
                   />
                 </div>
               </div>
+
+              {/* Set Splitter Grid (when "sets" mode is active) */}
+              {questionCount === "sets" && activePaper && (
+                <div className="p-3 rounded-2xl bg-white border border-indigo-200 space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-[11px] font-bold text-indigo-950">
+                      દરેક સેટમાં કેટલા MCQs? ({paperSets.length} Sets બનશે)
+                    </span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {[20, 30, 40, 50, 100].map((sz) => (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => {
+                            setSetSize(sz);
+                            setCustomSetSizeInput(String(sz));
+                            setSelectedSetNumber(1);
+                          }}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                            setSize === sz
+                              ? "bg-indigo-600 text-white border-indigo-600"
+                              : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {sz}
+                        </button>
+                      ))}
+                      <input
+                        type="number"
+                        min={5}
+                        max={activePaper.questions?.length || 500}
+                        value={customSetSizeInput}
+                        onChange={(e) => {
+                          setCustomSetSizeInput(e.target.value);
+                          const n = Number(e.target.value);
+                          if (n >= 5) {
+                            setSetSize(Math.min(n, activePaper.questions?.length || 500));
+                            setSelectedSetNumber(1);
+                          }
+                        }}
+                        className="w-12 px-1.5 py-0.5 rounded-lg border border-slate-300 text-[10px] font-mono font-bold text-center"
+                        title="કસ્ટમ સેટ સાઈઝ"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="max-h-40 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1.5 pr-1">
+                    {paperSets.map((s) => {
+                      const record = setDispatches.find(
+                        (r) => r.setSize === s.setSize && r.setNumber === s.setNumber
+                      );
+                      const isDone = Boolean(record);
+                      const isPicked = selectedSetNumber === s.setNumber;
+                      return (
+                        <button
+                          key={s.key}
+                          type="button"
+                          onClick={() => setSelectedSetNumber(s.setNumber)}
+                          className={`p-2 rounded-xl border text-left transition-all ${
+                            isPicked
+                              ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                              : isDone
+                              ? "bg-emerald-50 text-emerald-900 border-emerald-200 hover:border-emerald-300"
+                              : "bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[11px] font-bold">
+                            <span>Set {s.setNumber}</span>
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 rounded-full ${
+                                isPicked
+                                  ? "bg-white/20 text-white"
+                                  : isDone
+                                  ? "bg-emerald-200 text-emerald-900"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {isDone ? `✅ ${record?.quizCode || "Done"}` : "⏳ બાકી"}
+                            </span>
+                          </div>
+                          <div
+                            className={`text-[10px] mt-0.5 ${
+                              isPicked ? "text-indigo-100" : "text-slate-500"
+                            }`}
+                          >
+                            Q{s.startQuestion}–{s.endQuestion} ({s.questionCount})
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Generate Button */}
@@ -484,7 +699,11 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
               className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center justify-center space-x-1.5 disabled:opacity-50 transition-all transform active:scale-[0.98]"
             >
               <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>ટેલિગ્રામ ટેસ્ટ કોડ બનાવો (Generate Test Code)</span>
+              <span>
+                {questionCount === "sets" && activeSetObj
+                  ? `Set ${activeSetObj.setNumber} (Q${activeSetObj.startQuestion}-${activeSetObj.endQuestion}) નો ટેસ્ટ કોડ બનાવો`
+                  : "ટેલિગ્રામ ટેસ્ટ કોડ બનાવો (Generate Test Code)"}
+              </span>
             </button>
           </div>
 

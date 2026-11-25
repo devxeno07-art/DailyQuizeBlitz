@@ -56,9 +56,19 @@ export interface Paper {
   updatedAt: string;
 }
 
+export interface TelegramQuizSetMeta {
+  setNumber: number;
+  totalSets: number;
+  setSize: number;
+  startQuestion: number;
+  endQuestion: number;
+}
+
 export interface TelegramQuiz {
   code: string; // e.g. "GSRTC-8492"
   paperId: string;
+  parentPaperId?: string;
+  setMeta?: TelegramQuizSetMeta;
   title: string;
   subject: string;
   timePerQuestion: number; // in seconds, e.g. 30
@@ -66,6 +76,21 @@ export interface TelegramQuiz {
   createdBy: string;
   creatorPhone: string;
   createdAt: string;
+}
+
+export interface PaperSetDispatchRecord {
+  id: string; // `${paperId}::${setSize}::${setNumber}`
+  paperId: string;
+  testCode?: string;
+  setSize: number;
+  setNumber: number;
+  totalSets: number;
+  startQuestion: number;
+  endQuestion: number;
+  quizCode?: string;
+  groupId?: string;
+  dispatchedAt: string;
+  dispatchedBy?: string;
 }
 
 export interface TelegramBotConfig {
@@ -88,6 +113,9 @@ export interface ScheduledDailyTest {
   specificTestCode?: string; // e.g. "TEST-1062"
   specificPaperId?: string;
   shuffleQuestions?: boolean; // true = random shuffle, false = sequential from Q1
+  useSetProgression?: boolean; // true = advance through sequential sets (Set 1, Set 2...) across runs
+  currentSetIndex?: number; // 0-based index of next set to dispatch
+  totalPaperQuestions?: number; // cached total questions for progress badge
   questionCount: number;
   timePerQuestion: number;
   scheduledTime: string; // e.g. "21:00" (Asia/Kolkata)
@@ -112,6 +140,10 @@ export interface TestAttemptResult {
   wrongCount: number;
   percentage: number;
   grade: string;
+  setKey?: string;
+  setNumber?: number;
+  setSize?: number;
+  setLabel?: string;
   completedAt: string;
 }
 

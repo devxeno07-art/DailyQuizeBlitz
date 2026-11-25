@@ -13,9 +13,18 @@ export async function GET() {
   try {
     const quizzes = await getAllServerQuizzes();
 
-    // Deduplicate by paperId or title, keeping the version with the highest question count
+    // Deduplicate master papers by paperId or title, excluding split-set/scheduled clones
     const map = new Map<string, typeof quizzes[0]>();
     for (const q of quizzes) {
+      const pid = String(q.paperId || "");
+      if (
+        q.setMeta ||
+        q.parentPaperId ||
+        pid.includes("::set_") ||
+        pid.startsWith("sched_")
+      ) {
+        continue;
+      }
       const key = q.paperId || `${q.title}_${q.creatorPhone || ""}`;
       const existing = map.get(key);
       if (

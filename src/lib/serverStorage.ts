@@ -5,6 +5,7 @@ import {
   ScheduledDailyTest,
   TestAttemptResult,
   ServerOverviewStats,
+  PaperSetDispatchRecord,
 } from "@/types";
 import { getStorageMode, kvGetJson, kvSetJson, withKeyLock } from "./kvStore";
 
@@ -13,6 +14,7 @@ const QUIZZES_KEY = "quizzes.json";
 const SESSIONS_KEY = "sessions.json";
 const SCHEDULES_KEY = "schedules.json";
 const ATTEMPTS_KEY = "attempts.json";
+const PAPER_SETS_KEY = "paper_set_progress.json";
 
 const MAX_QUIZZES = 800;
 const MAX_SESSIONS = 400;
@@ -61,6 +63,23 @@ export const saveServerBotConfig = async (
   await kvSetJson(BOT_CONFIG_KEY, config);
 };
 
+const isSetOrScheduledQuiz = (quiz: TelegramQuiz): boolean => {
+  const pid = String(quiz.paperId || "");
+  return Boolean(
+    quiz.setMeta ||
+      quiz.parentPaperId ||
+      pid.includes("::set_") ||
+      pid.startsWith("sched_")
+  );
+};
+
+const getQuizDedupKey = (quiz: TelegramQuiz): string => {
+  if (isSetOrScheduledQuiz(quiz)) {
+    return quiz.code.toUpperCase();
+  }
+  return quiz.paperId || quiz.code.toUpperCase();
+};
+
 const normalizeQuiz = (quiz: TelegramQuiz): TelegramQuiz => {
   let title = String(quiz.title || "સ્પર્ધાત્મક પરીક્ષા મોક ટેસ્ટ").trim().slice(0, 200);
   if (title === "GSRTC સ્પેશિયલ મોક ટેસ્ટ") {
@@ -76,9 +95,9 @@ const normalizeQuiz = (quiz: TelegramQuiz): TelegramQuiz => {
     code: String(quiz.code || "").trim().toUpperCase(),
     title,
     subject,
-    timePerQuestion: Math.max(10, Math.min(600, Number(quiz.timePerQuestion) || 30)),
+    timePerQuestion: Math.max(5, Math.min(600, Number(quiz.timePerQuestion) || 30)),
     questions: Array.isArray(quiz.questions)
-      ? quiz.questions.slice(0, 500).map((q) => ({
+      ? quiz.questions.slice(0, 2000).map((q) => ({
           ...q,
           questionText: String(q.questionText || "").slice(0, 3000),
           options: Array.isArray(q.options)
@@ -95,10 +114,11 @@ export const getAllServerQuizzes = async (): Promise<TelegramQuiz[]> => {
   const quizzes = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
   if (!Array.isArray(quizzes)) return [];
 
-  // Deduplicate quizzes sharing the same paperId, keeping highest question count
+  // Deduplicate master quizzes sharing the same paperId, keeping highest question count,
+  // while preserving every individual set/scheduled quiz by its unique code.
   const map = new Map<string, TelegramQuiz>();
   for (const q of quizzes) {
-    const key = q.paperId || q.code.toUpperCase();
+    const key = getQuizDedupKey(q);
     const existing = map.get(key);
     if (
       !existing ||
@@ -116,18 +136,19 @@ export const getAllServerQuizzes = async (): Promise<TelegramQuiz[]> => {
 export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
   if (!quiz || !quiz.code) return;
   const normalized = normalizeQuiz(quiz);
+  const normalizedIsSubset = isSetOrScheduledQuiz(normalized);
 
   await withKeyLock(QUIZZES_KEY, async () => {
     const all = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
     const list = Array.isArray(all) ? all : [];
 
-    const idx = list.findIndex(
-      (q) =>
-        q.code.toUpperCase() === normalized.code.toUpperCase() ||
-        (Boolean(normalized.paperId) &&
-          Boolean(q.paperId) &&
-          q.paperId === normalized.paperId)
-    );
+    const idx = list.findIndex((q) => {
+      if (q.code.toUpperCase() === normalized.code.toUpperCase()) return true;
+      if (normalizedIsSubset || isSetOrScheduledQuiz(q)) return false;
+      return Boolean(
+        normalized.paperId && q.paperId && q.paperId === normalized.paperId
+      );
+    });
 
     if (idx >= 0) {
       list[idx] = normalized;
@@ -135,10 +156,9 @@ export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
       list.unshift(normalized);
     }
 
-    // Deduplicate by paperId (keeping highest question count)
     const map = new Map<string, TelegramQuiz>();
     for (const q of list) {
-      const key = q.paperId || q.code.toUpperCase();
+      const key = getQuizDedupKey(q);
       const existing = map.get(key);
       if (
         !existing ||
@@ -415,4 +435,78 @@ export const getServerOverviewStats = async (): Promise<ServerOverviewStats> => 
     storageMode: getStorageMode(),
     webhookConfigured: Boolean(config.webhookUrl || config.webAppUrl),
   };
+};
+
+// ==========================================
+// Paper Set Dispatch Tracker (Completed vs Remaining Sets)
+// ==========================================
+
+export const getAllPaperSetDispatches = async (): Promise<
+  PaperSetDispatchRecord[]
+> => {
+  const records = await kvGetJson<PaperSetDispatchRecord[]>(PAPER_SETS_KEY, []);
+  return Array.isArray(records) ? records : [];
+};
+
+export const getPaperSetDispatchesFor = async (
+  paperId?: string,
+  testCode?: string
+): Promise<PaperSetDispatchRecord[]> => {
+  const all = await getAllPaperSetDispatches();
+  if (!paperId && !testCode) return all;
+  const pid = (paperId || "").trim();
+  const code = (testCode || "").trim().toUpperCase();
+  return all.filter(
+    (r) =>
+      (Boolean(pid) && r.paperId === pid) ||
+      (Boolean(code) && String(r.testCode || "").toUpperCase() === code)
+  );
+};
+
+export const savePaperSetDispatch = async (
+  record: PaperSetDispatchRecord
+): Promise<void> => {
+  if (!record || !record.id) return;
+  await withKeyLock(PAPER_SETS_KEY, async () => {
+    const all = await getAllPaperSetDispatches();
+    const idx = all.findIndex((r) => r.id === record.id);
+    if (idx >= 0) {
+      all[idx] = record;
+    } else {
+      all.unshift(record);
+    }
+    await kvSetJson(PAPER_SETS_KEY, all.slice(0, 2000));
+  });
+};
+
+export const deletePaperSetDispatch = async (id: string): Promise<void> => {
+  if (!id) return;
+  await withKeyLock(PAPER_SETS_KEY, async () => {
+    const all = await getAllPaperSetDispatches();
+    await kvSetJson(
+      PAPER_SETS_KEY,
+      all.filter((r) => r.id !== id)
+    );
+  });
+};
+
+export const resetPaperSetDispatches = async (
+  paperId?: string,
+  testCode?: string,
+  setSize?: number
+): Promise<void> => {
+  await withKeyLock(PAPER_SETS_KEY, async () => {
+    const all = await getAllPaperSetDispatches();
+    const pid = (paperId || "").trim();
+    const code = (testCode || "").trim().toUpperCase();
+    const filtered = all.filter((r) => {
+      const matchesPaper =
+        (Boolean(pid) && r.paperId === pid) ||
+        (Boolean(code) && String(r.testCode || "").toUpperCase() === code);
+      if (!matchesPaper) return true;
+      if (setSize && r.setSize !== setSize) return true;
+      return false;
+    });
+    await kvSetJson(PAPER_SETS_KEY, filtered);
+  });
 };
