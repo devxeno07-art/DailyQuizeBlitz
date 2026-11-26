@@ -183,6 +183,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [schedTitle, setSchedTitle] = useState("ડેઇલી મોક ટેસ્ટ");
   const [schedMode, setSchedMode] = useState<"all_mixed" | "subject_wise" | "specific_test">("specific_test");
   const [schedSubject, setSchedSubject] = useState("");
+  const [schedMixedSubjects, setSchedMixedSubjects] = useState<string[]>([]);
   const [schedSpecificCode, setSchedSpecificCode] = useState("");
   const [schedShuffle, setSchedShuffle] = useState(true);
   const [schedUseSetProgression, setSchedUseSetProgression] = useState(false);
@@ -500,7 +501,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           ? (schedSubject || availableSubjects[0] || "સામાન્ય જ્ઞાન")
           : schedMode === "specific_test"
           ? (selectedPaper?.subject || selectedPaper?.title || "ચોક્કસ ટેસ્ટ")
+          : schedMixedSubjects.length > 0
+          ? schedMixedSubjects.join(", ")
           : "બધા વિષયો મિક્સ",
+      selectedSubjects:
+        schedMode === "all_mixed" && schedMixedSubjects.length > 0
+          ? schedMixedSubjects
+          : undefined,
       specificTestCode:
         schedMode === "specific_test"
           ? (schedSpecificCode || selectedPaper?.testCode)
@@ -547,6 +554,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (s.mode === "subject_wise" && s.subject) {
       setSchedSubject(s.subject);
     }
+    setSchedMixedSubjects(
+      s.mode === "all_mixed" && Array.isArray(s.selectedSubjects)
+        ? s.selectedSubjects
+        : []
+    );
     setSchedShuffle(s.shuffleQuestions !== false);
     setSchedUseSetProgression(Boolean(s.useSetProgression));
     setSchedQuestionCount(s.questionCount || 25);
@@ -564,6 +576,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setEditingScheduleId(null);
     setSchedTitle("ડેઇલી મોક ટેસ્ટ");
     setSchedMode("specific_test");
+    setSchedMixedSubjects([]);
     setSchedQuestionCount(25);
     setSchedShuffle(true);
     setSchedUseSetProgression(false);
@@ -1718,9 +1731,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             className="mt-1 accent-emerald-600"
                           />
                           <div>
-                            <div className="font-bold text-xs sm:text-sm">🎲 બધા જ પ્રશ્નોમાંથી મિક્સ</div>
+                            <div className="font-bold text-xs sm:text-sm">🎲 કસ્ટમ / મિક્સ મોક ટેસ્ટ</div>
                             <div className="text-[11px] text-slate-500 font-normal mt-0.5">
-                              તમામ પેપર્સમાંથી મિક્સ પ્રશ્નોની ગ્રાન્ડ મોક ટેસ્ટ. (પૂલ: {totalQuestions} પ્રશ્નો)
+                              બધા જ પેપર્સ અથવા તમારા પસંદ કરેલા વિષયોની મિક્સ ટેસ્ટ. (પૂલ: {totalQuestions} પ્રશ્નો)
                             </div>
                           </div>
                         </label>
@@ -1853,6 +1866,97 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   <div className="truncate text-xs">{subj}</div>
                                   <div className="text-[10px] text-purple-700 font-mono mt-0.5">
                                     {qCount} MCQs પ્રાપ્ય
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Mode 3: Custom Multi-Subject Mix Selector */}
+                    {schedMode === "all_mixed" && (
+                      <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-emerald-200 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <label className="block font-bold text-emerald-950 text-xs sm:text-sm">
+                              મિક્સ ટેસ્ટમાં કયા વિષયો સામેલ કરવા છે?
+                            </label>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              {schedMixedSubjects.length === 0
+                                ? `કોઈ પસંદ નથી = બધા જ વિષયો મિક્સ (કુલ પૂલ: ${totalQuestions} MCQs)`
+                                : `${schedMixedSubjects.length} વિષયો પસંદ કર્યા (કુલ પૂલ: ${schedMixedSubjects.reduce(
+                                    (sum, subj) => sum + getSubjectQuestionCount(subj),
+                                    0
+                                  )} MCQs)`}
+                            </p>
+                          </div>
+
+                          {availableSubjects.length > 0 && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setSchedMixedSubjects([])}
+                                className={`h-8 px-2.5 rounded-xl text-[11px] font-bold border transition-colors ${
+                                  schedMixedSubjects.length === 0
+                                    ? "bg-emerald-600 text-white border-emerald-600"
+                                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                                }`}
+                              >
+                                બધા વિષયો (All)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSchedMixedSubjects([...availableSubjects])}
+                                className="h-8 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold transition-colors"
+                              >
+                                બધા ટીક કરો
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {availableSubjects.length === 0 ? (
+                          <p className="text-slate-400 text-xs italic">
+                            હજુ કોઈ વિષય મળ્યો નથી. બધા પેપર્સમાંથી પ્રશ્નો મિક્સ લેવાશે.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {availableSubjects.map((subj) => {
+                              const qCount = getSubjectQuestionCount(subj);
+                              const isChecked = schedMixedSubjects.includes(subj);
+                              return (
+                                <button
+                                  type="button"
+                                  key={subj}
+                                  onClick={() =>
+                                    setSchedMixedSubjects((prev) =>
+                                      prev.includes(subj)
+                                        ? prev.filter((item) => item !== subj)
+                                        : [...prev, subj]
+                                    )
+                                  }
+                                  className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2 ${
+                                    isChecked
+                                      ? "bg-emerald-50 border-emerald-500 text-emerald-950 font-bold shadow-xs"
+                                      : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  <span
+                                    className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center text-[10px] border shrink-0 ${
+                                      isChecked
+                                        ? "bg-emerald-600 border-emerald-600 text-white"
+                                        : "bg-white border-slate-300 text-transparent"
+                                    }`}
+                                  >
+                                    ✓
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-xs">{subj}</div>
+                                    <div className="text-[10px] text-emerald-700 font-mono mt-0.5">
+                                      {qCount} MCQs
+                                    </div>
                                   </div>
                                 </button>
                               );
@@ -2554,6 +2658,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   ? `🎯 ટેસ્ટ: ${s.specificTestCode || "Specific"}`
                                   : s.mode === "subject_wise"
                                   ? `📚 વિષય: ${s.subject}`
+                                  : s.selectedSubjects && s.selectedSubjects.length > 0
+                                  ? `🎲 મિક્સ (${s.selectedSubjects.length} વિષય): ${s.selectedSubjects
+                                      .slice(0, 2)
+                                      .join(", ")}${s.selectedSubjects.length > 2 ? ` +${s.selectedSubjects.length - 2}` : ""}`
                                   : "🎲 બધા પ્રશ્નો મિક્સ"}
                               </span>
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">

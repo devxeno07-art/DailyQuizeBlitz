@@ -154,6 +154,21 @@ const collectCandidateQuestions = (
         String(quiz.title || "").toLowerCase().includes(target)
     );
     if (matched.length > 0) relevant = matched;
+  } else if (
+    schedule.mode === "all_mixed" &&
+    Array.isArray(schedule.selectedSubjects) &&
+    schedule.selectedSubjects.length > 0
+  ) {
+    const targets = schedule.selectedSubjects
+      .map((s) => String(s || "").toLowerCase().trim())
+      .filter(Boolean);
+    if (targets.length > 0) {
+      relevant = quizzes.filter((quiz) => {
+        const qSubj = String(quiz.subject || "").toLowerCase();
+        const qTitle = String(quiz.title || "").toLowerCase();
+        return targets.some((t) => qSubj.includes(t) || qTitle.includes(t));
+      });
+    }
   }
 
   const questions: Question[] = [];
@@ -242,6 +257,18 @@ export const buildQuizFromSchedule = async (
   } else if (schedule.mode === "subject_wise" && schedule.subject) {
     defaultTitle = `${schedule.subject} મોક ટેસ્ટ`;
     subjectLabel = schedule.subject;
+  } else if (
+    schedule.mode === "all_mixed" &&
+    Array.isArray(schedule.selectedSubjects) &&
+    schedule.selectedSubjects.length > 0
+  ) {
+    const preview = schedule.selectedSubjects.slice(0, 3).join(", ");
+    const extra =
+      schedule.selectedSubjects.length > 3
+        ? ` +${schedule.selectedSubjects.length - 3}`
+        : "";
+    defaultTitle = "કસ્ટમ મિક્સ મોક ટેસ્ટ";
+    subjectLabel = `${preview}${extra}`;
   }
 
   const baseTitle = schedule.title || defaultTitle;

@@ -38,6 +38,29 @@ const sanitizeSchedule = (
       ? Boolean(existing.shuffleQuestions)
       : true;
 
+  const selectedSubjectsRaw =
+    mode === "all_mixed"
+      ? Array.isArray(body?.selectedSubjects)
+        ? body.selectedSubjects
+        : existing?.selectedSubjects
+      : undefined;
+
+  const selectedSubjects =
+    Array.isArray(selectedSubjectsRaw) && selectedSubjectsRaw.length > 0
+      ? Array.from(
+          new Set(
+            selectedSubjectsRaw
+              .map((s: any) => String(s || "").trim().slice(0, 120))
+              .filter(Boolean)
+          )
+        ).slice(0, 50)
+      : undefined;
+
+  const reminderRaw =
+    body?.reminderMinutesBefore !== undefined
+      ? Number(body.reminderMinutesBefore)
+      : existing?.reminderMinutesBefore;
+
   return {
     id:
       String(body?.id ?? existing?.id ?? "").trim() ||
@@ -49,7 +72,10 @@ const sanitizeSchedule = (
     subject:
       mode === "subject_wise"
         ? String(body?.subject ?? existing?.subject ?? "").trim().slice(0, 120)
+        : mode === "all_mixed" && selectedSubjects && selectedSubjects.length > 0
+        ? selectedSubjects.join(", ").slice(0, 180)
         : "",
+    selectedSubjects,
     specificTestCode:
       mode === "specific_test"
         ? String(body?.specificTestCode ?? existing?.specificTestCode ?? "")
@@ -61,6 +87,18 @@ const sanitizeSchedule = (
         ? String(body?.specificPaperId ?? existing?.specificPaperId ?? "").trim()
         : undefined,
     shuffleQuestions,
+    useSetProgression:
+      mode === "specific_test"
+        ? Boolean(body?.useSetProgression ?? existing?.useSetProgression)
+        : false,
+    currentSetIndex:
+      body?.currentSetIndex !== undefined
+        ? Math.max(0, Number(body.currentSetIndex) || 0)
+        : existing?.currentSetIndex || 0,
+    totalPaperQuestions:
+      body?.totalPaperQuestions !== undefined
+        ? Number(body.totalPaperQuestions) || undefined
+        : existing?.totalPaperQuestions,
     questionCount: Math.max(
       1,
       Math.min(
@@ -80,6 +118,10 @@ const sanitizeSchedule = (
     targetGroupId: String(
       body?.targetGroupId ?? existing?.targetGroupId ?? ""
     ).trim(),
+    reminderMinutesBefore:
+      reminderRaw !== undefined && Number.isFinite(reminderRaw)
+        ? Math.max(0, Math.min(240, reminderRaw))
+        : 60,
     lastRunAt: existing?.lastRunAt,
     lastRunDay: existing?.lastRunDay,
     lastGeneratedCode: existing?.lastGeneratedCode,

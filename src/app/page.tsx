@@ -15,7 +15,8 @@ import { PrintableView } from "@/components/PrintableView";
 import { SourcePapersLibrary } from "@/components/SourcePapersLibrary";
 import { TelegramBotModal } from "@/components/TelegramBotModal";
 import { LeaderboardModal } from "@/components/LeaderboardModal";
-import { FileDown, BookOpen, Plus, Bot, Printer } from "lucide-react";
+import { MixTestModal } from "@/components/MixTestModal";
+import { FileDown, BookOpen, Plus, Bot, Printer, Shuffle } from "lucide-react";
 
 export default function Home() {
   const { user, papers, isMounted } = useAuth();
@@ -43,6 +44,7 @@ export default function Home() {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
   const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(false);
+  const [mixModalOpen, setMixModalOpen] = useState(false);
   const [activeModalPaper, setActiveModalPaper] = useState<Paper | null>(null);
 
   const handleSelectPaper = (paper: Paper) => {
@@ -149,7 +151,15 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-3 sm:flex items-center gap-1.5">
+                <div className="grid grid-cols-2 sm:flex items-center gap-1.5">
+                  <button
+                    onClick={() => setMixModalOpen(true)}
+                    className="h-10 flex items-center justify-center space-x-1 px-2.5 sm:px-3 rounded-xl bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200 font-bold text-[11px] sm:text-xs transition-colors whitespace-nowrap"
+                  >
+                    <Shuffle className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+                    <span>મિક્સ ટેસ્ટ</span>
+                  </button>
+
                   <Link
                     href="/pdf-studio"
                     className="h-10 flex items-center justify-center space-x-1 px-2.5 sm:px-3 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold text-[11px] sm:text-xs transition-colors whitespace-nowrap"
@@ -227,6 +237,13 @@ export default function Home() {
         isOpen={leaderboardModalOpen}
         onClose={() => setLeaderboardModalOpen(false)}
         onTakeTest={handleTakeTest}
+      />
+
+      <MixTestModal
+        isOpen={mixModalOpen}
+        onClose={() => setMixModalOpen(false)}
+        onStartOnlineTest={handleTakeTest}
+        onOpenTelegramQuiz={(mixed) => handleOpenTelegram(mixed)}
       />
 
       {/* Print-Only Document */}

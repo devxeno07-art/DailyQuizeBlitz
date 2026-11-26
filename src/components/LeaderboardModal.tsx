@@ -9,7 +9,7 @@ import {
   PublicTestAttempt,
 } from "@/lib/storage";
 import { useAuth } from "@/context/AuthContext";
-import { X, Trophy, Bot, Copy, Check, PlayCircle, ExternalLink } from "lucide-react";
+import { X, Trophy, Bot, Copy, Check, PlayCircle } from "lucide-react";
 
 interface LeaderboardModalProps {
   paper: Paper | null;
@@ -106,23 +106,23 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/75 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-3xl bg-[#0f172a] rounded-3xl shadow-2xl overflow-hidden border border-slate-800 max-h-[94vh] flex flex-col text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="w-full max-w-3xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden border border-slate-200 max-h-[94vh] flex flex-col text-slate-900">
         {/* Header */}
-        <div className="px-5 py-3.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+        <div className="px-4 sm:px-5 py-3.5 bg-gradient-to-r from-brand-600 to-indigo-600 text-white flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/25 text-amber-300 flex items-center justify-center font-bold shrink-0">
               <Trophy className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="font-bold text-sm text-white">{paper.title}</h3>
-              <p className="text-[11px] text-slate-400">
-                લાઈવ સ્કોરબોર્ડ પરિણામ & ટેલિગ્રામ લીડરબોર્ડ
+            <div className="min-w-0">
+              <h3 className="font-bold text-sm sm:text-base text-white truncate">{paper.title}</h3>
+              <p className="text-[11px] text-indigo-100 truncate">
+                લાઈવ સ્કોરબોર્ડ પરિણામ &amp; ટેલિગ્રામ લીડરબોર્ડ
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             {paper.testCode && (
               <button
                 onClick={() => {
@@ -130,18 +130,18 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   setCopiedCode(true);
                   setTimeout(() => setCopiedCode(false), 2000);
                 }}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/40 text-xs font-mono font-bold hover:bg-sky-500/30 transition-colors"
+                className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/25 text-xs font-mono font-bold transition-colors"
                 title="ટેલિગ્રામ કમાન્ડ કોપી કરો"
               >
-                <Bot className="w-3.5 h-3.5" />
+                <Bot className="w-3.5 h-3.5 text-sky-200" />
                 <span>/quiz {paper.testCode}</span>
-                {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-sky-300" />}
+                {copiedCode ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3 text-indigo-100" />}
               </button>
             )}
 
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center transition-colors shrink-0"
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors shrink-0"
               title="બંધ કરો"
             >
               <X className="w-5 h-5" />
@@ -150,9 +150,9 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto bg-slate-50/70 p-3 sm:p-5 space-y-4">
           {loadingAttempts && (
-            <p className="text-center text-[11px] text-slate-400">
+            <p className="text-center text-xs text-slate-500 font-medium">
               પરિણામો લોડ થઈ રહ્યાં છે...
             </p>
           )}
@@ -168,9 +168,9 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-4 sm:px-5 py-3 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="text-xs text-slate-400">
-            કુલ {paper.questions?.length || 0} પ્રશ્નો • કોડ: <span className="font-mono text-sky-400 font-bold">{paper.testCode || "-"}</span>
+        <div className="px-4 sm:px-5 py-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="text-xs text-slate-500 font-medium">
+            કુલ <strong className="text-slate-800">{paper.questions?.length || 0}</strong> પ્રશ્નો • કોડ: <span className="font-mono text-indigo-600 font-bold">{paper.testCode || "-"}</span>
           </div>
 
           <div className={`grid ${onTakeTest ? "grid-cols-2" : "grid-cols-1"} sm:flex items-center gap-2 w-full sm:w-auto`}>
@@ -180,7 +180,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   onClose();
                   onTakeTest(paper);
                 }}
-                className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all"
+                className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all"
               >
                 <PlayCircle className="w-4 h-4 shrink-0" />
                 <span className="truncate">ટેસ્ટ આપો</span>
@@ -189,7 +189,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
             <button
               onClick={onClose}
-              className="h-10 px-4 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold inline-flex items-center justify-center"
+              className="h-10 px-4 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center justify-center transition-colors"
             >
               બંધ કરો
             </button>

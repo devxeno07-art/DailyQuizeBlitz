@@ -110,6 +110,7 @@ export interface ScheduledDailyTest {
   title: string;
   mode: 'all_mixed' | 'subject_wise' | 'specific_test';
   subject?: string;
+  selectedSubjects?: string[]; // when mode === 'all_mixed', optional subset of subjects to mix
   specificTestCode?: string; // e.g. "TEST-1062"
   specificPaperId?: string;
   shuffleQuestions?: boolean; // true = random shuffle, false = sequential from Q1

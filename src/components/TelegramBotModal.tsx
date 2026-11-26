@@ -67,8 +67,23 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     getTelegramBotConfig()
   );
 
-  // Active target paper
-  const activePaper = (selectedPaperId ? papers.find(p => p.id === selectedPaperId) : paper) || papers[0];
+  // Active target paper (supports both user papers & virtual/community papers passed via prop)
+  const activePaper =
+    (selectedPaperId
+      ? papers.find((p) => p.id === selectedPaperId) ||
+        (paper && paper.id === selectedPaperId ? paper : undefined)
+      : paper) ||
+    paper ||
+    papers[0];
+
+  useEffect(() => {
+    if (!isOpen || !paper) return;
+    setSelectedPaperId(paper.id);
+    setTestTitle(paper.title || "સ્પર્ધાત્મક પરીક્ષા મોક ટેસ્ટ");
+    setTestSubject(paper.subject || paper.category || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ");
+    setQuestionCount(paper.questions?.length > 50 ? "sets" : "all");
+    setGeneratedQuiz(null);
+  }, [isOpen, paper]);
 
   const paperSets = useMemo(() => {
     if (!activePaper?.questions?.length) return [];
