@@ -370,17 +370,209 @@ export const setLocalUsers = (users: UserProfile[]): void => {
   }
 };
 
+export const normalizeClientUserId = (raw: string): string => {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "";
+  if (/^tg_/i.test(trimmed)) {
+    const digits = trimmed.replace(/^tg_/i, "").replace(/\D/g, "");
+    return digits ? `tg_${digits}` : trimmed.toLowerCase();
+  }
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return digits.slice(2);
+  }
+  return digits || trimmed;
+};
+
+export const mergePapersList = (
+  primary: Paper[],
+  secondary: Paper[]
+): Paper[] => {
+  const map = new Map<string, Paper>();
+
+  const upsert = (p: Paper) => {
+    if (!p || !p.id) return;
+    const key = p.id;
+    const existing =
+      map.get(key) ||
+      (p.testCode
+        ? Array.from(map.values()).find(
+            (item) =>
+              item.testCode &&
+              item.testCode.toUpperCase() === p.testCode!.toUpperCase() &&
+              normalizeClientUserId(item.userId) ===
+                normalizeClientUserId(p.userId)
+          )
+        : undefined);
+
+    if (!existing) {
+      map.set(key, p);
+      return;
+    }
+
+    const existingUpdated = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+    const incomingUpdated = new Date(p.updatedAt || p.createdAt || 0).getTime();
+    const existingQ = existing.questions?.length || 0;
+    const incomingQ = p.questions?.length || 0;
+
+    if (
+      incomingUpdated > existingUpdated ||
+      (incomingUpdated === existingUpdated && incomingQ > existingQ) ||
+      (existingQ === 0 && incomingQ > 0)
+    ) {
+      map.set(existing.id, {
+        ...existing,
+        ...p,
+        id: existing.id,
+        userId: p.userId || existing.userId,
+        userName: p.userName || existing.userName,
+      });
+    }
+  };
+
+  primary.forEach(upsert);
+  secondary.forEach(upsert);
+
+  return Array.from(map.values()).sort(
+    (a, b) =>
+      new Date(b.updatedAt || b.createdAt || 0).getTime() -
+      new Date(a.updatedAt || a.createdAt || 0).getTime()
+  );
+};
+
+export const mergeUsersList = (
+  localList: UserProfile[],
+  serverList: UserProfile[]
+): UserProfile[] => {
+  const map = new Map<string, UserProfile>();
+
+  const upsert = (u: UserProfile, isServer: boolean) => {
+    const uid = normalizeClientUserId(u.id || u.phoneNumber);
+    if (!uid) return;
+    const existing = map.get(uid);
+    if (!existing) {
+      map.set(uid, { ...u, id: uid, phoneNumber: uid });
+      return;
+    }
+    const existingActive = new Date(existing.lastActive || 0).getTime();
+    const incomingActive = new Date(u.lastActive || 0).getTime();
+    map.set(uid, {
+      ...existing,
+      ...u,
+      id: uid,
+      phoneNumber: uid,
+      name: (isServer && u.name ? u.name : existing.name || u.name) || "વિદ્યાર્થી",
+      createdAt: existing.createdAt || u.createdAt,
+      lastActive: incomingActive >= existingActive ? u.lastActive : existing.lastActive,
+      hasLibraryAccess: isServer
+        ? Boolean(u.hasLibraryAccess)
+        : Boolean(existing.hasLibraryAccess || u.hasLibraryAccess),
+      papersCount: Math.max(Number(existing.papersCount || 0), Number(u.papersCount || 0)),
+      questionsCount: Math.max(Number(existing.questionsCount || 0), Number(u.questionsCount || 0)),
+    });
+  };
+
+  localList.forEach((u) => upsert(u, false));
+  serverList.forEach((u) => upsert(u, true));
+
+  return Array.from(map.values()).sort(
+    (a, b) =>
+      new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime()
+  );
+};
+
+export const lookupServerUser = async (
+  phoneNumber: string
+): Promise<UserProfile | null> => {
+  if (typeof window === "undefined") return null;
+  const cleanId = normalizeClientUserId(phoneNumber);
+  if (!cleanId) return null;
+  try {
+    const res = await fetch(
+      `/api/users?phone=${encodeURIComponent(cleanId)}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return data?.ok && data.user ? (data.user as UserProfile) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const syncUserPapersToServer = async (userId: string): Promise<void> => {
+  if (typeof window === "undefined" || !userId) return;
+  const cleanId = normalizeClientUserId(userId);
+  const myLocal = getLocalPapers().filter(
+    (p) => normalizeClientUserId(p.userId) === cleanId
+  );
+  for (const paper of myLocal) {
+    try {
+      await fetch("/api/papers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(paper),
+      });
+      if (paper.questions && paper.questions.length > 0 && paper.testCode) {
+        const tQuiz: TelegramQuiz = {
+          code: paper.testCode,
+          paperId: paper.id,
+          title: paper.title,
+          subject: paper.subject || paper.category,
+          timePerQuestion: 30,
+          questions: paper.questions,
+          createdBy: paper.userName,
+          creatorPhone: cleanId,
+          createdAt: paper.updatedAt || new Date().toISOString(),
+        };
+        await fetch("/api/telegram/save-quiz", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(tQuiz),
+        }).catch(() => {});
+      }
+    } catch {
+      // Best-effort background sync
+    }
+  }
+};
+
 export const toggleUserLibraryAccess = async (userId: string): Promise<boolean> => {
+  const cleanId = normalizeClientUserId(userId);
+  let newState: boolean | null = null;
+
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: cleanId }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.ok && data.user) {
+          newState = Boolean(data.user.hasLibraryAccess);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not toggle library access on server:", e);
+    }
+  }
+
   const users = getLocalUsers();
-  const idx = users.findIndex(u => u.id === userId);
-  if (idx < 0) return false;
-  
-  const newState = !users[idx].hasLibraryAccess;
-  users[idx].hasLibraryAccess = newState;
-  setLocalUsers(users);
+  const idx = users.findIndex((u) => normalizeClientUserId(u.id) === cleanId);
+  if (newState === null) {
+    if (idx < 0) return false;
+    newState = !users[idx].hasLibraryAccess;
+  }
+
+  if (idx >= 0) {
+    users[idx].hasLibraryAccess = newState;
+    setLocalUsers(users);
+  }
 
   const current = getCurrentUser();
-  if (current && current.id === userId) {
+  if (current && normalizeClientUserId(current.id) === cleanId) {
     current.hasLibraryAccess = newState;
     setCurrentUser(current);
   }
@@ -388,7 +580,7 @@ export const toggleUserLibraryAccess = async (userId: string): Promise<boolean> 
   const { db } = initFirebase();
   if (db) {
     try {
-      await setDoc(doc(db, "users", userId), { hasLibraryAccess: newState }, { merge: true });
+      await setDoc(doc(db, "users", cleanId), { hasLibraryAccess: newState }, { merge: true });
     } catch (e) {
       console.warn("Could not sync user library access to firestore", e);
     }
@@ -417,11 +609,11 @@ export const setCurrentUser = (user: UserProfile | null): void => {
 };
 
 export const loginOrRegister = async (phoneNumber: string, name: string): Promise<UserProfile> => {
-  const cleanPhone = phoneNumber.trim().replace(/\D/g, "");
+  const cleanPhone = normalizeClientUserId(phoneNumber);
   const cleanName = name.trim();
   const now = new Date().toISOString();
 
-  const userObj: UserProfile = {
+  let userObj: UserProfile = {
     id: cleanPhone,
     phoneNumber: cleanPhone,
     name: cleanName,
@@ -430,9 +622,12 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
   };
 
   const localUsers = getLocalUsers();
-  const existingIndex = localUsers.findIndex(u => u.id === cleanPhone);
+  const existingIndex = localUsers.findIndex(
+    (u) => normalizeClientUserId(u.id) === cleanPhone
+  );
   if (existingIndex >= 0) {
     userObj.createdAt = localUsers[existingIndex].createdAt || now;
+    userObj.hasLibraryAccess = localUsers[existingIndex].hasLibraryAccess;
     if (!cleanName && localUsers[existingIndex].name) {
       userObj.name = localUsers[existingIndex].name;
     }
@@ -442,6 +637,36 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
   }
   setLocalUsers(localUsers);
   setCurrentUser(userObj);
+
+  // Persist user registration on server (Upstash Redis) so Admin & other devices see it
+  if (typeof window !== "undefined" && cleanPhone) {
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userObj),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.ok && data.user) {
+          userObj = { ...userObj, ...data.user };
+          const updatedLocal = getLocalUsers();
+          const idx2 = updatedLocal.findIndex(
+            (u) => normalizeClientUserId(u.id) === cleanPhone
+          );
+          if (idx2 >= 0) {
+            updatedLocal[idx2] = userObj;
+          } else {
+            updatedLocal.push(userObj);
+          }
+          setLocalUsers(updatedLocal);
+          setCurrentUser(userObj);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not sync user to server:", err);
+    }
+  }
 
   const { db } = initFirebase();
   if (db) {
@@ -467,9 +692,12 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
 export const savePaper = async (paper: Paper): Promise<void> => {
   const now = new Date().toISOString();
   const code = paper.testCode || generateTestCode(paper.category);
+  const normalizedUserId = normalizeClientUserId(paper.userId || "");
 
   const updatedPaper: Paper = {
     ...paper,
+    userId: normalizedUserId || paper.userId,
+    creatorPhone: normalizedUserId || paper.creatorPhone,
     testCode: code,
     updatedAt: now,
   };
@@ -485,9 +713,20 @@ export const savePaper = async (paper: Paper): Promise<void> => {
 
   if (typeof window !== "undefined") {
     localStorage.removeItem(`mcq_draft_${paper.id}`);
+
+    // Sync full paper (including 0-question & >500-question papers) to server Redis store
+    try {
+      await fetch("/api/papers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedPaper),
+      });
+    } catch (e) {
+      console.warn("Could not sync full paper to server:", e);
+    }
   }
 
-  // Auto-sync to Telegram Quizzes store so the code is always live!
+  // Auto-sync to Telegram Quizzes store so the /quiz code is always live!
   if (updatedPaper.questions && updatedPaper.questions.length > 0) {
     const tQuiz: TelegramQuiz = {
       code: code,
@@ -500,13 +739,17 @@ export const savePaper = async (paper: Paper): Promise<void> => {
       creatorPhone: updatedPaper.userId,
       createdAt: now,
     };
-    saveTelegramQuiz(tQuiz);
+    await saveTelegramQuiz(tQuiz);
   }
 
   const localUsers = getLocalUsers();
-  const userIdx = localUsers.findIndex(u => u.id === paper.userId);
+  const userIdx = localUsers.findIndex(
+    (u) => normalizeClientUserId(u.id) === normalizedUserId
+  );
   if (userIdx >= 0) {
-    const userPapers = localPapers.filter(p => p.userId === paper.userId);
+    const userPapers = localPapers.filter(
+      (p) => normalizeClientUserId(p.userId) === normalizedUserId
+    );
     const totalQuestions = userPapers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
     localUsers[userIdx].papersCount = userPapers.length;
     localUsers[userIdx].questionsCount = totalQuestions;
@@ -520,7 +763,7 @@ export const savePaper = async (paper: Paper): Promise<void> => {
       const paperRef = doc(db, "papers", paper.id);
       await setDoc(paperRef, updatedPaper);
 
-      const userRef = doc(db, "users", paper.userId);
+      const userRef = doc(db, "users", normalizedUserId || paper.userId);
       await setDoc(userRef, {
         lastActive: now,
         papersCount: (userIdx >= 0 ? localUsers[userIdx].papersCount : 1),
@@ -587,19 +830,49 @@ export const subscribeUserPapers = (
   userId: string,
   callback: (papers: Paper[]) => void
 ): (() => void) => {
+  const cleanUserId = normalizeClientUserId(userId);
+  const getUserLocal = () =>
+    getLocalPapers().filter(
+      (p) => normalizeClientUserId(p.userId) === cleanUserId
+    );
+
   const notify = () => {
-    const updated = getLocalPapers().filter((p) => p.userId === userId);
-    callback(updated);
+    callback(getUserLocal());
   };
 
   notify();
+
+  // Fetch user's papers from server Redis store so switching browsers / refreshing
+  // always restores all papers & questions seamlessly.
+  let cancelled = false;
+  if (typeof window !== "undefined" && cleanUserId) {
+    fetch(`/api/papers?userId=${encodeURIComponent(cleanUserId)}`, {
+      cache: "no-store",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.ok || !Array.isArray(data.papers)) return;
+        const serverMine: Paper[] = data.papers;
+        const currentLocal = getLocalPapers();
+        const mineLocal = currentLocal.filter(
+          (p) => normalizeClientUserId(p.userId) === cleanUserId
+        );
+        const mergedMine = mergePapersList(mineLocal, serverMine);
+        const otherLocal = currentLocal.filter(
+          (p) => normalizeClientUserId(p.userId) !== cleanUserId
+        );
+        setLocalPapers([...mergedMine, ...otherLocal]);
+        callback(mergedMine);
+      })
+      .catch(() => {});
+  }
 
   const { db } = initFirebase();
   let unsubscribeFirestore: (() => void) | null = null;
 
   if (db) {
     try {
-      const q = query(collection(db, "papers"), where("userId", "==", userId));
+      const q = query(collection(db, "papers"), where("userId", "==", cleanUserId));
       unsubscribeFirestore = onSnapshot(
         q,
         (snapshot) => {
@@ -607,16 +880,18 @@ export const subscribeUserPapers = (
           snapshot.forEach((doc) => {
             cloudPapers.push(doc.data() as Paper);
           });
-          cloudPapers.sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-          );
 
           const currentLocal = getLocalPapers();
-          const otherPapers = currentLocal.filter((p) => p.userId !== userId);
-          setLocalPapers([...cloudPapers, ...otherPapers]);
+          const mineLocal = currentLocal.filter(
+            (p) => normalizeClientUserId(p.userId) === cleanUserId
+          );
+          const mergedMine = mergePapersList(cloudPapers, mineLocal);
+          const otherPapers = currentLocal.filter(
+            (p) => normalizeClientUserId(p.userId) !== cleanUserId
+          );
+          setLocalPapers([...mergedMine, ...otherPapers]);
 
-          callback(cloudPapers);
+          callback(mergedMine);
         },
         (error) => {
           console.warn("Firestore subscription error, using local:", error);
@@ -643,6 +918,7 @@ export const subscribeUserPapers = (
   }
 
   return () => {
+    cancelled = true;
     if (unsubscribeFirestore) unsubscribeFirestore();
     broadcastChannel?.removeEventListener("message", handleMessage);
     if (typeof window !== "undefined") {
@@ -653,6 +929,18 @@ export const subscribeUserPapers = (
 
 export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => void) => {
   callback(getLocalPapers());
+
+  let cancelled = false;
+  if (typeof window !== "undefined") {
+    fetch("/api/papers", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.ok || !Array.isArray(data.papers)) return;
+        const merged = mergePapersList(getLocalPapers(), data.papers);
+        callback(merged);
+      })
+      .catch(() => {});
+  }
 
   const { db } = initFirebase();
   let unsubscribeFirestore: (() => void) | null = null;
@@ -665,8 +953,8 @@ export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => 
         snapshot.forEach((doc) => {
           cloudPapers.push(doc.data() as Paper);
         });
-        setLocalPapers(cloudPapers);
-        callback(cloudPapers);
+        const merged = mergePapersList(cloudPapers, getLocalPapers());
+        callback(merged);
       }, (err) => {
         console.warn("Admin firestore papers error:", err);
       });
@@ -684,6 +972,7 @@ export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => 
   broadcastChannel?.addEventListener("message", handleMessage);
 
   return () => {
+    cancelled = true;
     if (unsubscribeFirestore) unsubscribeFirestore();
     broadcastChannel?.removeEventListener("message", handleMessage);
   };
@@ -691,6 +980,19 @@ export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => 
 
 export const subscribeAllUsers = (callback: (users: UserProfile[]) => void): (() => void) => {
   callback(getLocalUsers());
+
+  let cancelled = false;
+  if (typeof window !== "undefined") {
+    fetch("/api/users", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.ok || !Array.isArray(data.users)) return;
+        const merged = mergeUsersList(getLocalUsers(), data.users);
+        setLocalUsers(merged);
+        callback(merged);
+      })
+      .catch(() => {});
+  }
 
   const { db } = initFirebase();
   let unsubscribeFirestore: (() => void) | null = null;
@@ -703,8 +1005,9 @@ export const subscribeAllUsers = (callback: (users: UserProfile[]) => void): (()
         snapshot.forEach((doc) => {
           cloudUsers.push(doc.data() as UserProfile);
         });
-        setLocalUsers(cloudUsers);
-        callback(cloudUsers);
+        const merged = mergeUsersList(getLocalUsers(), cloudUsers);
+        setLocalUsers(merged);
+        callback(merged);
       }, (err) => {
         console.warn("Admin firestore users error:", err);
       });
@@ -722,6 +1025,7 @@ export const subscribeAllUsers = (callback: (users: UserProfile[]) => void): (()
   broadcastChannel?.addEventListener("message", handleMessage);
 
   return () => {
+    cancelled = true;
     if (unsubscribeFirestore) unsubscribeFirestore();
     broadcastChannel?.removeEventListener("message", handleMessage);
   };

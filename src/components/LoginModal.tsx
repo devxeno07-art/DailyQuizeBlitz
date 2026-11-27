@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { lookupServerUser } from "@/lib/storage";
 import { Phone, User, ArrowRight, ShieldCheck, Sparkles, CheckCircle2 } from "lucide-react";
 
 interface LoginModalProps {
@@ -31,6 +32,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen }) => {
         setIsExisting(true);
       } else {
         setIsExisting(false);
+        lookupServerUser(clean).then((srvUser) => {
+          if (srvUser) {
+            setName((prev) => prev || srvUser.name);
+            setIsExisting(true);
+          }
+        });
       }
     } else {
       setIsExisting(false);

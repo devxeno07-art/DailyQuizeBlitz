@@ -7,7 +7,8 @@ import {
   setCurrentUser, 
   loginOrRegister, 
   subscribeUserPapers,
-  getLocalUsers
+  getLocalUsers,
+  syncUserPapersToServer
 } from "@/lib/storage";
 
 interface AuthContextType {
@@ -34,6 +35,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentUser = getCurrentUser();
       if (currentUser) {
         setUser(currentUser);
+        // Backfill already-logged-in user & their local papers/questions to server Redis
+        // and sync latest server flags (like hasLibraryAccess) on every page load/refresh.
+        loginOrRegister(currentUser.id || currentUser.phoneNumber, currentUser.name)
+          .then((syncedUser) => {
+            setUser(syncedUser);
+            return syncUserPapersToServer(syncedUser.id);
+          })
+          .catch(() => {});
       }
     } catch (e) {
       console.warn("Auth initialization error", e);

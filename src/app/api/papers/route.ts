@@ -1,20 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getAllServerQuizzes,
+  getAllServerPapers,
+  saveServerPaper,
   deleteServerQuiz,
+  deleteServerPaperRecord,
   getServerQuizByCode,
+  normalizeUserId,
 } from "@/lib/serverStorage";
 import { isAdminRequest } from "@/lib/adminAuth";
 import { Paper } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const quizzes = await getAllServerQuizzes();
+    const filterUserId = normalizeUserId(
+      req.nextUrl.searchParams.get("userId") || ""
+    );
 
-    // Deduplicate master papers by paperId or title, excluding split-set/scheduled clones
-    const map = new Map<string, typeof quizzes[0]>();
+    const [serverPapers, quizzes] = await Promise.all([
+      getAllServerPapers(),
+      getAllServerQuizzes(),
+    ]);
+
+    const map = new Map<string, Paper>();
+
+    // 1. Seed with full server papers (includes 0-question and >500-question papers)
+    for (const p of serverPapers) {
+      const uid = normalizeUserId(p.userId || p.creatorPhone || "");
+      const key = p.id || `${p.title}_${uid}`;
+      map.set(key, {
+        ...p,
+        userId: uid || p.userId,
+        creatorPhone: uid || p.creatorPhone,
+      });
+    }
+
+    // 2. Merge master quizzes from Telegram quiz store without losing questions
     for (const q of quizzes) {
       const pid = String(q.paperId || "");
       if (
@@ -25,45 +48,95 @@ export async function GET() {
       ) {
         continue;
       }
-      const key = q.paperId || `${q.title}_${q.creatorPhone || ""}`;
-      const existing = map.get(key);
-      if (
-        !existing ||
-        (q.questions?.length || 0) > (existing.questions?.length || 0)
+
+      const creatorId = normalizeUserId(q.creatorPhone || "");
+      const mapped: Paper = {
+        id: q.paperId || `server_${q.code}`,
+        userId: creatorId,
+        creatorPhone: creatorId,
+        userName: q.createdBy || "શિક્ષક / વિદ્યાર્થી",
+        title: q.title,
+        subject: q.subject || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ",
+        category: "સ્પર્ધાત્મક પરીક્ષા",
+        targetQuestions: q.questions?.length || 0,
+        timeLimitMinutes: Math.max(
+          10,
+          Math.ceil(((q.questions?.length || 20) * (q.timePerQuestion || 30)) / 60)
+        ),
+        isPublic: true,
+        testCode: q.code,
+        questions: Array.isArray(q.questions) ? q.questions : [],
+        createdAt: q.createdAt || new Date().toISOString(),
+        updatedAt: q.createdAt || new Date().toISOString(),
+      };
+
+      const byId = map.get(mapped.id);
+      const byCode = !byId && mapped.testCode
+        ? Array.from(map.values()).find(
+            (item) =>
+              item.testCode &&
+              item.testCode.toUpperCase() === mapped.testCode!.toUpperCase()
+          )
+        : undefined;
+      const existing = byId || byCode;
+
+      if (!existing) {
+        map.set(mapped.id, mapped);
+      } else if (
+        (mapped.questions?.length || 0) > (existing.questions?.length || 0)
       ) {
-        map.set(key, q);
+        map.set(existing.id, {
+          ...existing,
+          questions: mapped.questions,
+          targetQuestions: mapped.questions.length,
+          testCode: existing.testCode || mapped.testCode,
+          userId: existing.userId || mapped.userId,
+          userName: existing.userName || mapped.userName,
+          updatedAt:
+            new Date(mapped.updatedAt || 0).getTime() >
+            new Date(existing.updatedAt || 0).getTime()
+              ? mapped.updatedAt
+              : existing.updatedAt,
+        });
       }
     }
 
-    const deduplicated = Array.from(map.values()).sort(
+    let papers = Array.from(map.values()).sort(
       (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        new Date(b.updatedAt || b.createdAt).getTime() -
+        new Date(a.updatedAt || a.createdAt).getTime()
     );
 
-    // Map TelegramQuiz into Paper model for client consumption
-    const papers: Paper[] = deduplicated.map((q) => ({
-      id: q.paperId || `server_${q.code}`,
-      userId: q.creatorPhone || "",
-      userName: q.createdBy || "શિક્ષક / વિદ્યાર્થી",
-      title: q.title,
-      subject: q.subject || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ",
-      category: "સ્પર્ધાત્મક પરીક્ષા",
-      targetQuestions: q.questions?.length || 0,
-      timeLimitMinutes: Math.max(
-        10,
-        Math.ceil(((q.questions?.length || 20) * (q.timePerQuestion || 30)) / 60)
-      ),
-      isPublic: true,
-      testCode: q.code,
-      questions: Array.isArray(q.questions) ? q.questions : [],
-      createdAt: q.createdAt || new Date().toISOString(),
-      updatedAt: q.createdAt || new Date().toISOString(),
-    }));
+    if (filterUserId) {
+      papers = papers.filter(
+        (p) => normalizeUserId(p.userId || p.creatorPhone || "") === filterUserId
+      );
+    }
 
     return NextResponse.json({ ok: true, papers });
   } catch (err: any) {
     return NextResponse.json(
-      { ok: false, error: err?.message || "Failed to fetch community papers" },
+      { ok: false, error: err?.message || "Failed to fetch papers" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const paper: Paper = await req.json();
+    if (!paper || !paper.id) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid paper payload" },
+        { status: 400 }
+      );
+    }
+
+    const saved = await saveServerPaper(paper);
+    return NextResponse.json({ ok: true, paper: saved });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: err?.message || "Failed to save paper" },
       { status: 500 }
     );
   }
@@ -74,7 +147,7 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id") || "";
     const code = searchParams.get("code") || "";
-    const userPhone = searchParams.get("userPhone") || "";
+    const userPhone = normalizeUserId(searchParams.get("userPhone") || "");
 
     if (!id && !code) {
       return NextResponse.json(
@@ -83,16 +156,12 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Check ownership if code provided
     if (code) {
       const existing = await getServerQuizByCode(code);
       const isAdmin = isAdminRequest(req);
       if (existing && !isAdmin && userPhone) {
-        if (
-          existing.creatorPhone &&
-          existing.creatorPhone !== userPhone &&
-          existing.creatorPhone !== `tg_${userPhone}`
-        ) {
+        const owner = normalizeUserId(existing.creatorPhone || "");
+        if (owner && owner !== userPhone) {
           return NextResponse.json(
             { ok: false, error: "Only the author can delete this paper" },
             { status: 403 }
@@ -101,10 +170,16 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
-    const deleted =
-      (await deleteServerQuiz(code)) || (await deleteServerQuiz(id));
+    const [deletedPaper, deletedQuizByCode, deletedQuizById] = await Promise.all([
+      deleteServerPaperRecord(id, code),
+      code ? deleteServerQuiz(code) : Promise.resolve(false),
+      id ? deleteServerQuiz(id) : Promise.resolve(false),
+    ]);
 
-    return NextResponse.json({ ok: true, deleted });
+    return NextResponse.json({
+      ok: true,
+      deleted: Boolean(deletedPaper || deletedQuizByCode || deletedQuizById),
+    });
   } catch (err: any) {
     return NextResponse.json(
       { ok: false, error: err?.message || "Failed to delete server paper" },

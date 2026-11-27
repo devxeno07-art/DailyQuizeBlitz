@@ -5,7 +5,7 @@ import { TelegramQuiz } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-const MAX_QUESTIONS = 500;
+const MAX_QUESTIONS = 2000;
 
 export async function POST(req: NextRequest) {
   try {

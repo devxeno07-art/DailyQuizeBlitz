@@ -27,7 +27,11 @@ import {
   saveScheduledDailyTest,
   deleteScheduledDailyTest,
   dispatchScheduledDailyTest,
-  fetchServerScheduledTests
+  fetchServerScheduledTests,
+  mergePapersList,
+  mergeUsersList,
+  normalizeClientUserId,
+  setLocalUsers
 } from "@/lib/storage";
 import { getStoredFirebaseConfig, initFirebase } from "@/lib/firebase";
 import { 
@@ -249,6 +253,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
   }, []);
 
+  const [refreshingUsers, setRefreshingUsers] = useState(false);
+
+  const loadUsersAndPapersFromServer = async () => {
+    setRefreshingUsers(true);
+    try {
+      const [usersRes, papersRes, statsRes] = await Promise.all([
+        fetch("/api/users", { cache: "no-store" }).catch(() => null),
+        fetch("/api/papers", { cache: "no-store" }).catch(() => null),
+        fetch("/api/admin/stats", { cache: "no-store" }).catch(() => null),
+      ]);
+
+      if (usersRes && usersRes.ok) {
+        const uData = await usersRes.json().catch(() => ({}));
+        if (uData?.ok && Array.isArray(uData.users)) {
+          const mergedUsers = mergeUsersList(getLocalUsers(), uData.users);
+          setLocalUsers(mergedUsers);
+          setUsers(mergedUsers);
+        }
+      }
+
+      if (papersRes && papersRes.ok) {
+        const pData = await papersRes.json().catch(() => ({}));
+        if (pData?.ok && Array.isArray(pData.papers)) {
+          setServerCommunityPapers(pData.papers);
+          setAllPapers((prev) => mergePapersList(prev, pData.papers));
+        }
+      }
+
+      if (statsRes && statsRes.ok) {
+        const sData = await statsRes.json().catch(() => ({}));
+        if (sData?.stats) setServerStats(sData.stats);
+      }
+    } finally {
+      setRefreshingUsers(false);
+    }
+  };
+
   const refreshServerStats = async () => {
     try {
       const res = await fetch("/api/admin/stats", { cache: "no-store" });
@@ -274,11 +315,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     const loadServerData = async () => {
       try {
-        const [cfgRes, statsRes, schedules, papersRes, setsRes] = await Promise.all([
+        const [cfgRes, statsRes, schedules, papersRes, usersRes, setsRes] = await Promise.all([
           fetch("/api/telegram/config", { cache: "no-store" }),
           fetch("/api/admin/stats", { cache: "no-store" }),
           fetchServerScheduledTests().catch(() => [] as ScheduledDailyTest[]),
           fetch("/api/papers", { cache: "no-store" }).catch(() => null),
+          fetch("/api/users", { cache: "no-store" }).catch(() => null),
           fetch("/api/papers/sets", { cache: "no-store" }).catch(() => null),
         ]);
 
@@ -295,6 +337,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           const pData = await papersRes.json().catch(() => ({}));
           if (pData.ok && Array.isArray(pData.papers)) {
             setServerCommunityPapers(pData.papers);
+            setAllPapers((prev) => mergePapersList(prev, pData.papers));
+          }
+        }
+
+        if (usersRes && usersRes.ok) {
+          const uData = await usersRes.json().catch(() => ({}));
+          if (uData.ok && Array.isArray(uData.users)) {
+            const mergedUsers = mergeUsersList(getLocalUsers(), uData.users);
+            setLocalUsers(mergedUsers);
+            setUsers(mergedUsers);
           }
         }
 
@@ -385,25 +437,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setServerStats(null);
   };
 
-  const totalQuestions = allPapers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
+  const mergedAllPapers = useMemo(
+    () => mergePapersList(allPapers, serverCommunityPapers),
+    [allPapers, serverCommunityPapers]
+  );
 
-  const usersWithCounts = users.map((u) => {
-    const userPapers = allPapers.filter((p) => p.userId === u.id);
-    const uQuestions = userPapers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
-    return {
-      ...u,
-      papersCount: userPapers.length,
-      questionsCount: uQuestions,
-    };
-  });
+  const totalQuestions = mergedAllPapers.reduce(
+    (sum, p) => sum + (p.questions?.length || 0),
+    0
+  );
 
-  const filteredUsers = usersWithCounts.filter((u) =>
-    u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-    u.phoneNumber.includes(userSearch)
+  const usersWithCounts = useMemo(() => {
+    const userMap = new Map<string, UserProfile>();
+    users.forEach((u) => {
+      const uid = normalizeClientUserId(u.id || u.phoneNumber);
+      if (uid) userMap.set(uid, { ...u, id: uid, phoneNumber: uid });
+    });
+
+    // Include any author present in server/community papers so zero users are missed
+    mergedAllPapers.forEach((p) => {
+      const uid = normalizeClientUserId(p.userId || p.creatorPhone || "");
+      if (!uid || uid === "server") return;
+      if (!userMap.has(uid)) {
+        userMap.set(uid, {
+          id: uid,
+          phoneNumber: uid,
+          name: p.userName || "શિક્ષક / વિદ્યાર્થી",
+          createdAt: p.createdAt || new Date().toISOString(),
+          lastActive: p.updatedAt || p.createdAt || new Date().toISOString(),
+        });
+      }
+    });
+
+    return Array.from(userMap.values())
+      .map((u) => {
+        const userPapers = mergedAllPapers.filter(
+          (p) => normalizeClientUserId(p.userId || p.creatorPhone || "") === u.id
+        );
+        const uQuestions = userPapers.reduce(
+          (sum, p) => sum + (p.questions?.length || 0),
+          0
+        );
+        return {
+          ...u,
+          papersCount: userPapers.length,
+          questionsCount: uQuestions,
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.lastActive || 0).getTime() -
+          new Date(a.lastActive || 0).getTime()
+      );
+  }, [users, mergedAllPapers]);
+
+  const filteredUsers = usersWithCounts.filter(
+    (u) =>
+      u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+      u.phoneNumber.includes(userSearch)
   );
 
   const selectedUserPapers = selectedUser
-    ? allPapers.filter((p) => p.userId === selectedUser.id)
+    ? mergedAllPapers.filter(
+        (p) =>
+          normalizeClientUserId(p.userId || p.creatorPhone || "") ===
+          normalizeClientUserId(selectedUser.id)
+      )
     : [];
 
   const handleCreateSourcePaper = async (e: React.FormEvent) => {
@@ -1142,10 +1241,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span>લાઈવ સર્વર આંકડા (Server Overview)</span>
                   </div>
                   <button
-                    onClick={refreshServerStats}
-                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold flex items-center gap-1.5 transition-colors"
+                    onClick={loadUsersAndPapersFromServer}
+                    disabled={refreshingUsers}
+                    className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
                   >
-                    <RefreshCw className="w-3 h-3" />
+                    <RefreshCw className={`w-3 h-3 ${refreshingUsers ? "animate-spin" : ""}`} />
                     રિફ્રેશ
                   </button>
                 </div>
@@ -1184,7 +1284,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>યુઝર્સ ({users.length})</span>
+                <span>યુઝર્સ ({usersWithCounts.length})</span>
               </button>
 
               <button
@@ -1316,18 +1416,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                       <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
                         <Users className="w-4 h-4 text-brand-600" />
-                        <span>તમામ યુઝર્સનું લિસ્ટ (Registered Users)</span>
+                        <span>તમામ યુઝર્સનું લિસ્ટ ({usersWithCounts.length})</span>
                       </h4>
 
-                      <div className="relative w-full sm:w-64">
-                        <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                        <input
-                          type="text"
-                          value={userSearch}
-                          onChange={(e) => setUserSearch(e.target.value)}
-                          placeholder="નામ કે નંબરથી શોધો..."
-                          className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                        />
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="relative flex-1 sm:w-64">
+                          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                          <input
+                            type="text"
+                            value={userSearch}
+                            onChange={(e) => setUserSearch(e.target.value)}
+                            placeholder="નામ કે નંબરથી શોધો..."
+                            className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={loadUsersAndPapersFromServer}
+                          disabled={refreshingUsers}
+                          className="h-9 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs inline-flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-50"
+                          title="સર્વર પરથી યુઝર્સ અને પ્રશ્નો રીફ્રેશ કરો"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${refreshingUsers ? "animate-spin text-indigo-600" : ""}`} />
+                          <span>રીફ્રેશ</span>
+                        </button>
                       </div>
                     </div>
 
