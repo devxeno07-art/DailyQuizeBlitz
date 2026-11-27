@@ -53,7 +53,7 @@ export const PaperList: React.FC<PaperListProps> = ({
   onOpenLeaderboard,
 }) => {
   const { user, papers } = useAuth();
-  const [paperScope, setPaperScope] = useState<"my" | "community" | "all">("my");
+  const [paperScope, setPaperScope] = useState<"my" | "community" | "all">("all");
   const [communityPapers, setCommunityPapers] = useState<Paper[]>([]);
   const [loadingCommunity, setLoadingCommunity] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -572,9 +572,18 @@ export const PaperList: React.FC<PaperListProps> = ({
           </p>
           {paperScope !== "community" && myPapers.length === 0 && (
             <div className="flex flex-wrap items-center justify-center gap-2">
+              {communityOnlyPapers.length > 0 && (
+                <button
+                  onClick={() => setPaperScope("community")}
+                  className="h-10 inline-flex items-center space-x-1.5 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-sm hover:bg-indigo-700"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>કમ્યુનિટી ટેસ્ટ્સ જુઓ ({communityOnlyPapers.length})</span>
+                </button>
+              )}
               <button
                 onClick={onOpenCreate}
-                className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700"
+                className="h-10 inline-flex items-center space-x-1.5 px-5 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-md shadow-brand-500/20 hover:bg-brand-700"
               >
                 <Plus className="w-4 h-4" />
                 <span>પ્રથમ પેપર બનાવો</span>
@@ -582,7 +591,7 @@ export const PaperList: React.FC<PaperListProps> = ({
               <button
                 onClick={handleLoadSample}
                 disabled={importing}
-                className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-xs hover:bg-emerald-100 disabled:opacity-50"
+                className="h-10 inline-flex items-center space-x-1.5 px-5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-xs hover:bg-emerald-100 disabled:opacity-50"
               >
                 <FileJson className="w-4 h-4" />
                 <span>GSRTC નમૂનો લોડ કરો</span>

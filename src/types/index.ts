@@ -233,6 +233,6 @@ export interface ServerOverviewStats {
   attempts: number;
   averagePercentage: number;
   schedules: number;
-  storageMode: "redis" | "file" | "memory";
+  storageMode: "supabase" | "redis" | "file" | "memory";
   webhookConfigured: boolean;
 }

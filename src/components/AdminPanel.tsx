@@ -163,6 +163,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [sourcePapers, setSourcePapers] = useState<SourcePaper[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [usersSubView, setUsersSubView] = useState<"users" | "all_exams">("users");
 
   // Bot Config State
   const [botConfig, setBotConfig] = useState<TelegramBotConfig>(() => getTelegramBotConfig());
@@ -1413,11 +1414,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                      <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                        <Users className="w-4 h-4 text-brand-600" />
-                        <span>તમામ યુઝર્સનું લિસ્ટ ({usersWithCounts.length})</span>
-                      </h4>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                      <div className="grid grid-cols-2 sm:flex items-center gap-1.5 w-full sm:w-auto p-1 bg-slate-100 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => setUsersSubView("users")}
+                          className={`h-9 px-3 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all ${
+                            usersSubView === "users"
+                              ? "bg-white text-brand-700 shadow-xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          <Users className="w-3.5 h-3.5 shrink-0" />
+                          <span>યુઝર્સ ({usersWithCounts.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUsersSubView("all_exams")}
+                          className={`h-9 px-3 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all ${
+                            usersSubView === "all_exams"
+                              ? "bg-white text-indigo-700 shadow-xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          <FileText className="w-3.5 h-3.5 shrink-0" />
+                          <span>બધા ટેસ્ટ્સ ({mergedAllPapers.length})</span>
+                        </button>
+                      </div>
 
                       <div className="flex items-center gap-2 w-full sm:w-auto">
                         <div className="relative flex-1 sm:w-64">
@@ -1426,7 +1449,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             type="text"
                             value={userSearch}
                             onChange={(e) => setUserSearch(e.target.value)}
-                            placeholder="નામ કે નંબરથી શોધો..."
+                            placeholder={
+                              usersSubView === "all_exams"
+                                ? "ટેસ્ટ, વિષય કે કોડ શોધો..."
+                                : "નામ કે નંબરથી શોધો..."
+                            }
                             className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />
                         </div>
@@ -1443,7 +1470,76 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                     </div>
 
-                    {filteredUsers.length === 0 ? (
+                    {usersSubView === "all_exams" ? (
+                      (() => {
+                        const q = userSearch.trim().toLowerCase();
+                        const filteredExams = mergedAllPapers.filter((p) => {
+                          if (!q) return true;
+                          return (
+                            p.title?.toLowerCase().includes(q) ||
+                            p.subject?.toLowerCase().includes(q) ||
+                            p.testCode?.toLowerCase().includes(q) ||
+                            p.userName?.toLowerCase().includes(q)
+                          );
+                        });
+                        if (filteredExams.length === 0) {
+                          return (
+                            <div className="text-center py-10 text-slate-400 text-xs bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                              કોઈ ટેસ્ટ / પેપર મળ્યું નથી.
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {filteredExams.map((paper) => (
+                              <div
+                                key={paper.id}
+                                className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-indigo-400 transition-all space-y-2 flex flex-col justify-between"
+                              >
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 border border-sky-200">
+                                      {paper.testCode || "TEST"}
+                                    </span>
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
+                                      {paper.questions?.length || 0} MCQs
+                                    </span>
+                                  </div>
+                                  <h5 className="font-bold text-slate-900 text-sm line-clamp-2">
+                                    {paper.title}
+                                  </h5>
+                                  <p className="text-[11px] text-slate-500 truncate">
+                                    📚 {paper.subject || paper.category || "-"} • 👤 {paper.userName || paper.userId || "User"}
+                                  </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/70">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenSetManager(paper)}
+                                    className="h-9 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-xs inline-flex items-center justify-center gap-1"
+                                  >
+                                    <Layers className="w-3.5 h-3.5" />
+                                    <span>સેટ્સ</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onInspectPaper?.(paper);
+                                      onClose?.();
+                                    }}
+                                    className="h-9 px-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs inline-flex items-center justify-center gap-1"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>પેપર ખોલો</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()
+                    ) : filteredUsers.length === 0 ? (
                       <div className="text-center py-10 text-slate-400 text-xs bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                         કોઈ યુઝર મળ્યો નથી.
                       </div>
