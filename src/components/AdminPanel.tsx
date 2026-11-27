@@ -31,7 +31,8 @@ import {
   mergePapersList,
   mergeUsersList,
   normalizeClientUserId,
-  setLocalUsers
+  setLocalUsers,
+  fetchCommunityPapers
 } from "@/lib/storage";
 import { getStoredFirebaseConfig, initFirebase } from "@/lib/firebase";
 import { 
@@ -154,10 +155,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setMigratingRedis(true);
     setMigrateMsg(null);
     try {
+      if (useManualJson) {
+        let parsed: any = JSON.parse(manualBackupJson.trim());
+        if (parsed && typeof parsed.result === "string") {
+          parsed = JSON.parse(parsed.result);
+        } else if (parsed && Array.isArray(parsed.result)) {
+          parsed = parsed.result;
+        }
+        const items: any[] = Array.isArray(parsed) ? parsed : [parsed];
+
+        let totalPapers = 0;
+        let totalQuizzes = 0;
+        let totalUsers = 0;
+        const BATCH_SIZE = 5;
+
+        for (let i = 0; i < items.length; i += BATCH_SIZE) {
+          const batch = items.slice(i, i + BATCH_SIZE);
+          const res = await fetch("/api/admin/migrate-redis", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rawJson: JSON.stringify(batch) }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || `Batch ${Math.floor(i / BATCH_SIZE) + 1} failed`);
+          }
+          totalPapers += Number(data.papersImported || 0);
+          totalQuizzes += Number(data.quizzesImported || 0);
+          totalUsers = Math.max(totalUsers, Number(data.usersImported || 0));
+        }
+
+        setMigrateMsg({
+          ok: true,
+          text: `સફળતાપૂર્વક ${totalPapers} પેપર્સ અને ${totalQuizzes} ક્વિઝ Supabase માં રિસ્ટોર થયા!`,
+        });
+        setManualBackupJson("");
+        await Promise.all([fetchSupabaseStatus(), loadUsersAndPapersFromServer()]);
+        return;
+      }
+
       const res = await fetch("/api/admin/migrate-redis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(useManualJson ? { rawJson: manualBackupJson } : {}),
+        body: JSON.stringify({}),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
@@ -165,7 +205,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           ok: true,
           text: `સફળતાપૂર્વક ${data.papersImported || 0} પેપર્સ, ${data.quizzesImported || 0} ક્વિઝ અને ${data.usersImported || 0} યુઝર્સ Supabase માં રિસ્ટોર થયા!`,
         });
-        if (useManualJson) setManualBackupJson("");
         await Promise.all([fetchSupabaseStatus(), loadUsersAndPapersFromServer()]);
       } else {
         setMigrateMsg({
@@ -310,9 +349,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const loadUsersAndPapersFromServer = async () => {
     setRefreshingUsers(true);
     try {
-      const [usersRes, papersRes, statsRes] = await Promise.all([
+      const [usersRes, serverPapers, statsRes] = await Promise.all([
         fetch("/api/users", { cache: "no-store" }).catch(() => null),
-        fetch("/api/papers", { cache: "no-store" }).catch(() => null),
+        fetchCommunityPapers().catch(() => [] as Paper[]),
         fetch("/api/admin/stats", { cache: "no-store" }).catch(() => null),
       ]);
 
@@ -325,12 +364,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         }
       }
 
-      if (papersRes && papersRes.ok) {
-        const pData = await papersRes.json().catch(() => ({}));
-        if (pData?.ok && Array.isArray(pData.papers)) {
-          setServerCommunityPapers(pData.papers);
-          setAllPapers((prev) => mergePapersList(prev, pData.papers));
-        }
+      if (serverPapers.length > 0) {
+        setServerCommunityPapers(serverPapers);
+        setAllPapers((prev) => mergePapersList(prev, serverPapers));
       }
 
       if (statsRes && statsRes.ok) {
@@ -367,11 +403,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     const loadServerData = async () => {
       try {
-        const [cfgRes, statsRes, schedules, papersRes, usersRes, setsRes] = await Promise.all([
+        const [cfgRes, statsRes, schedules, serverPapers, usersRes, setsRes] = await Promise.all([
           fetch("/api/telegram/config", { cache: "no-store" }),
           fetch("/api/admin/stats", { cache: "no-store" }),
           fetchServerScheduledTests().catch(() => [] as ScheduledDailyTest[]),
-          fetch("/api/papers", { cache: "no-store" }).catch(() => null),
+          fetchCommunityPapers().catch(() => [] as Paper[]),
           fetch("/api/users", { cache: "no-store" }).catch(() => null),
           fetch("/api/papers/sets", { cache: "no-store" }).catch(() => null),
         ]);
@@ -385,12 +421,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           }
         }
 
-        if (papersRes && papersRes.ok) {
-          const pData = await papersRes.json().catch(() => ({}));
-          if (pData.ok && Array.isArray(pData.papers)) {
-            setServerCommunityPapers(pData.papers);
-            setAllPapers((prev) => mergePapersList(prev, pData.papers));
-          }
+        if (serverPapers.length > 0) {
+          setServerCommunityPapers(serverPapers);
+          setAllPapers((prev) => mergePapersList(prev, serverPapers));
         }
 
         if (usersRes && usersRes.ok) {

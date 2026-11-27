@@ -91,7 +91,11 @@ const warnIfEphemeral = (): void => {
 // Supabase REST KV Backend (`public.app_settings`)
 // ==========================================
 
+const SB_CHUNK_SIZE = 700_000; // ~700KB per row keeps Supabase REST fast & safe
+
 const sbKeyName = (key: string): string => `kv:${KEY_PREFIX}${key}`;
+const sbChunkName = (key: string, idx: number): string =>
+  `${sbKeyName(key)}::chunk:${idx}`;
 
 const supabaseHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
   apikey: SUPABASE_ANON_KEY,
@@ -100,55 +104,127 @@ const supabaseHeaders = (extra: Record<string, string> = {}): Record<string, str
 });
 
 const supabaseGet = async (key: string): Promise<string | null> => {
+  const base = SUPABASE_URL.replace(/\/$/, "");
   const target = sbKeyName(key);
   const res = await fetch(
-    `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/app_settings?key=eq.${encodeURIComponent(
+    `${base}/rest/v1/app_settings?key=eq.${encodeURIComponent(
       target
     )}&select=value`,
     {
       headers: supabaseHeaders(),
       cache: "no-store",
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(10000),
     }
   );
   if (!res.ok) {
     throw new Error(`Supabase GET failed (${res.status})`);
   }
   const rows = (await res.json()) as Array<{ value?: string }>;
-  return Array.isArray(rows) && rows.length > 0 ? rows[0].value ?? null : null;
+  const raw = Array.isArray(rows) && rows.length > 0 ? rows[0].value ?? null : null;
+  if (!raw) return null;
+
+  // Transparently reassemble chunked documents
+  if (raw.startsWith('{"__chunked":true')) {
+    try {
+      const meta = JSON.parse(raw) as { __chunked?: boolean; chunks?: number };
+      const count = Number(meta.chunks) || 0;
+      if (meta.__chunked && count > 0) {
+        const chunkKeys = Array.from({ length: count }, (_, i) => sbChunkName(key, i));
+        const inList = chunkKeys.map((k) => `"${encodeURIComponent(k)}"`).join(",");
+        const cRes = await fetch(
+          `${base}/rest/v1/app_settings?key=in.(${inList})&select=key,value`,
+          {
+            headers: supabaseHeaders(),
+            cache: "no-store",
+            signal: AbortSignal.timeout(15000),
+          }
+        );
+        if (!cRes.ok) {
+          throw new Error(`Supabase chunk GET failed (${cRes.status})`);
+        }
+        const cRows = (await cRes.json()) as Array<{ key: string; value: string }>;
+        const byKey = new Map(cRows.map((r) => [r.key, r.value || ""]));
+        let combined = "";
+        for (const ck of chunkKeys) {
+          const part = byKey.get(ck);
+          if (part === undefined) {
+            throw new Error(`Missing chunk ${ck}`);
+          }
+          combined += part;
+        }
+        return combined;
+      }
+    } catch (err) {
+      console.warn(`[storage] Failed to reassemble chunked key ${key}:`, err);
+      return null;
+    }
+  }
+
+  return raw;
 };
 
-const supabaseSet = async (key: string, value: string): Promise<void> => {
-  const target = sbKeyName(key);
-  const res = await fetch(
-    `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/app_settings`,
-    {
-      method: "POST",
-      headers: supabaseHeaders({
-        "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates,return=minimal",
-      }),
-      body: JSON.stringify({
-        key: target,
-        value,
-        updated_at: new Date().toISOString(),
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(10000),
-    }
-  );
+const supabaseUpsertBatch = async (
+  rows: Array<{ key: string; value: string; updated_at: string }>
+): Promise<void> => {
+  const base = SUPABASE_URL.replace(/\/$/, "");
+  const res = await fetch(`${base}/rest/v1/app_settings`, {
+    method: "POST",
+    headers: supabaseHeaders({
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    }),
+    body: JSON.stringify(rows),
+    cache: "no-store",
+    signal: AbortSignal.timeout(12000),
+  });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
     throw new Error(`Supabase SET failed (${res.status}): ${errText}`);
   }
 };
 
+const supabaseSet = async (key: string, value: string): Promise<void> => {
+  const now = new Date().toISOString();
+  const target = sbKeyName(key);
+
+  if (value.length <= SB_CHUNK_SIZE) {
+    await supabaseUpsertBatch([{ key: target, value, updated_at: now }]);
+    return;
+  }
+
+  // Split large payloads (>700KB) into chunks so Supabase stays fast for 50–200+ exams
+  const totalChunks = Math.ceil(value.length / SB_CHUNK_SIZE);
+  const chunkRows: Array<{ key: string; value: string; updated_at: string }> = [];
+  for (let i = 0; i < totalChunks; i++) {
+    chunkRows.push({
+      key: sbChunkName(key, i),
+      value: value.slice(i * SB_CHUNK_SIZE, (i + 1) * SB_CHUNK_SIZE),
+      updated_at: now,
+    });
+  }
+
+  // Write chunks in batches of 3 rows to stay well under PostgREST body limits
+  for (let i = 0; i < chunkRows.length; i += 3) {
+    await supabaseUpsertBatch(chunkRows.slice(i, i + 3));
+  }
+
+  // Commit manifest pointing to the newly written chunks
+  await supabaseUpsertBatch([
+    {
+      key: target,
+      value: JSON.stringify({ __chunked: true, chunks: totalChunks }),
+      updated_at: now,
+    },
+  ]);
+};
+
 const supabaseDelete = async (key: string): Promise<void> => {
+  const base = SUPABASE_URL.replace(/\/$/, "");
   const target = sbKeyName(key);
   const res = await fetch(
-    `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/app_settings?key=eq.${encodeURIComponent(
+    `${base}/rest/v1/app_settings?or=(key.eq.${encodeURIComponent(
       target
-    )}`,
+    )},key.like.${encodeURIComponent(`${target}::chunk:*`)})`,
     {
       method: "DELETE",
       headers: supabaseHeaders(),

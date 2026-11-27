@@ -113,7 +113,37 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, papers });
+    // Payload-safe auto-chunking so Vercel never hits 4.5MB FUNCTION_PAYLOAD_TOO_LARGE
+    // even when 50–200+ large exams exist in Supabase.
+    const MAX_RESPONSE_BYTES = 3_200_000;
+    const rawOffset = Number(req.nextUrl.searchParams.get("offset") || 0);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+
+    const total = papers.length;
+    const chunk: Paper[] = [];
+    let runningBytes = 0;
+
+    for (let i = offset; i < papers.length; i++) {
+      const p = papers[i];
+      const approxBytes = Buffer.byteLength(JSON.stringify(p), "utf8");
+      if (chunk.length > 0 && runningBytes + approxBytes > MAX_RESPONSE_BYTES) {
+        break;
+      }
+      chunk.push(p);
+      runningBytes += approxBytes;
+    }
+
+    const nextOffset = offset + chunk.length;
+    const hasMore = nextOffset < total;
+
+    return NextResponse.json({
+      ok: true,
+      papers: chunk,
+      total,
+      offset,
+      nextOffset,
+      hasMore,
+    });
   } catch (err: any) {
     return NextResponse.json(
       { ok: false, error: err?.message || "Failed to fetch papers" },

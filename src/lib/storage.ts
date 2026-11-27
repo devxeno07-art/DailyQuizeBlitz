@@ -345,7 +345,19 @@ export const setLocalPapers = (papers: Paper[]): void => {
     broadcastChannel?.postMessage({ type: "PAPERS_UPDATED" });
     window.dispatchEvent(new CustomEvent("mcq_papers_updated", { detail: papers }));
   } catch (e) {
-    console.error("Error writing local papers", e);
+    // Handle browser localStorage QuotaExceededError (~5MB) by evicting other users' cached papers
+    try {
+      const currUser = getCurrentUser();
+      const myUid = currUser ? normalizeClientUserId(currUser.id) : "";
+      const pruned = myUid
+        ? papers.filter((p) => normalizeClientUserId(p.userId) === myUid)
+        : papers.slice(0, 10);
+      localStorage.setItem(STORAGE_KEY_PAPERS, JSON.stringify(pruned));
+      broadcastChannel?.postMessage({ type: "PAPERS_UPDATED" });
+      window.dispatchEvent(new CustomEvent("mcq_papers_updated", { detail: pruned }));
+    } catch (e2) {
+      console.error("Error writing local papers (quota full):", e2);
+    }
   }
 };
 
@@ -812,18 +824,34 @@ export const deletePaper = async (paperId: string, testCode?: string): Promise<v
   }
 };
 
-export const fetchCommunityPapers = async (): Promise<Paper[]> => {
+export const fetchCommunityPapers = async (userIdFilter?: string): Promise<Paper[]> => {
   if (typeof window === "undefined") return [];
+  const collected: Paper[] = [];
+  let offset = 0;
+
   try {
-    const res = await fetch("/api/papers", { cache: "no-store" });
-    const data = await res.json();
-    if (data.ok && Array.isArray(data.papers)) {
-      return data.papers;
+    for (let page = 0; page < 30; page++) {
+      const params = new URLSearchParams();
+      if (userIdFilter) params.set("userId", userIdFilter);
+      if (offset > 0) params.set("offset", String(offset));
+      const qs = params.toString();
+      const res = await fetch(`/api/papers${qs ? `?${qs}` : ""}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) break;
+      const data = await res.json().catch(() => null);
+      if (!data?.ok || !Array.isArray(data.papers)) break;
+      collected.push(...data.papers);
+      if (!data.hasMore || typeof data.nextOffset !== "number" || data.nextOffset <= offset) {
+        break;
+      }
+      offset = data.nextOffset;
     }
   } catch (e) {
     console.warn("Could not fetch community papers:", e);
   }
-  return [];
+
+  return collected;
 };
 
 export const subscribeUserPapers = (
@@ -842,17 +870,13 @@ export const subscribeUserPapers = (
 
   notify();
 
-  // Fetch user's papers from server Redis store so switching browsers / refreshing
-  // always restores all papers & questions seamlessly.
+  // Fetch user's papers from server store across all pages so switching browsers
+  // or refreshing always restores all papers & questions seamlessly.
   let cancelled = false;
   if (typeof window !== "undefined" && cleanUserId) {
-    fetch(`/api/papers?userId=${encodeURIComponent(cleanUserId)}`, {
-      cache: "no-store",
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.ok || !Array.isArray(data.papers)) return;
-        const serverMine: Paper[] = data.papers;
+    fetchCommunityPapers(cleanUserId)
+      .then((serverMine) => {
+        if (cancelled || serverMine.length === 0) return;
         const currentLocal = getLocalPapers();
         const mineLocal = currentLocal.filter(
           (p) => normalizeClientUserId(p.userId) === cleanUserId
@@ -932,11 +956,10 @@ export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => 
 
   let cancelled = false;
   if (typeof window !== "undefined") {
-    fetch("/api/papers", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.ok || !Array.isArray(data.papers)) return;
-        const merged = mergePapersList(getLocalPapers(), data.papers);
+    fetchCommunityPapers()
+      .then((serverPapers) => {
+        if (cancelled || serverPapers.length === 0) return;
+        const merged = mergePapersList(getLocalPapers(), serverPapers);
         callback(merged);
       })
       .catch(() => {});
