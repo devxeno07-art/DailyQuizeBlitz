@@ -102,7 +102,7 @@ export const SourcePapersLibrary: React.FC<SourcePapersLibraryProps> = ({
           const linkedPapers = allPapers.filter((p) => p.sourcePaperId === sp.id);
           const userPaper = linkedPapers.find((p) => p.userId === user.id);
           const totalQuestionsDigitized = linkedPapers.reduce(
-            (max, p) => Math.max(max, p.questions?.length || 0),
+            (max, p) => Math.max(max, p.questions?.length || p.questionCount || 0),
             0
           );
           const percent = Math.min(100, Math.round((totalQuestionsDigitized / sp.targetQuestions) * 100));
@@ -152,7 +152,7 @@ export const SourcePapersLibrary: React.FC<SourcePapersLibraryProps> = ({
                 {userPaper && (
                   <div className="mt-2 text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>તમે આ પેપરમાં {userPaper.questions?.length || 0} પ્રશ્નો ડિજિટાઇઝ કર્યા છે.</span>
+                    <span>તમે આ પેપરમાં {userPaper.questions?.length || userPaper.questionCount || 0} પ્રશ્નો ડિજિટાઇઝ કર્યા છે.</span>
                   </div>
                 )}
               </div>

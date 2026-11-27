@@ -70,7 +70,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ paper, isOpen, onClose
             <div>
               <div className="font-bold text-slate-900 text-sm">{paper.title}</div>
               <div className="text-xs text-slate-500 mt-0.5">
-                {paper.subject} • {paper.questions?.length || 0} પ્રશ્નો
+                {paper.subject} • {paper.questions?.length || paper.questionCount || 0} પ્રશ્નો
               </div>
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">

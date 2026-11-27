@@ -122,8 +122,14 @@ const sanitizeSchedule = (
       reminderRaw !== undefined && Number.isFinite(reminderRaw)
         ? Math.max(0, Math.min(240, reminderRaw))
         : 60,
-    lastRunAt: existing?.lastRunAt,
-    lastRunDay: existing?.lastRunDay,
+    lastRunAt:
+      existing && scheduledTime !== existing.scheduledTime
+        ? undefined
+        : existing?.lastRunAt,
+    lastRunDay:
+      existing && scheduledTime !== existing.scheduledTime
+        ? undefined
+        : existing?.lastRunDay,
     lastGeneratedCode: existing?.lastGeneratedCode,
     createdAt: existing?.createdAt || now,
   };

@@ -45,7 +45,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
   if (!isOpen || !paper) return null;
 
-  const totalQuestions = paper.questions?.length || 50;
+  const totalQuestions = paper.questions?.length || paper.questionCount || 50;
 
   const calculateGrade = (pct: number): string => {
     if (pct >= 85) return "A+";
@@ -170,7 +170,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
         {/* Footer Actions */}
         <div className="px-4 sm:px-5 py-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="text-xs text-slate-500 font-medium">
-            કુલ <strong className="text-slate-800">{paper.questions?.length || 0}</strong> પ્રશ્નો • કોડ: <span className="font-mono text-indigo-600 font-bold">{paper.testCode || "-"}</span>
+            કુલ <strong className="text-slate-800">{paper.questions?.length || paper.questionCount || 0}</strong> પ્રશ્નો • કોડ: <span className="font-mono text-indigo-600 font-bold">{paper.testCode || "-"}</span>
           </div>
 
           <div className={`grid ${onTakeTest ? "grid-cols-2" : "grid-cols-1"} sm:flex items-center gap-2 w-full sm:w-auto`}>

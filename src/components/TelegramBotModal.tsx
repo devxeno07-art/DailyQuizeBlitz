@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { Paper, PaperSetDispatchRecord, TelegramQuiz, TelegramBotConfig } from "@/types";
-import { saveTelegramQuiz, getTelegramBotConfig } from "@/lib/storage";
+import { saveTelegramQuiz, getTelegramBotConfig, fetchFullPaper } from "@/lib/storage";
 import { divideQuestionsIntoSets } from "@/lib/testSets";
 import { useAuth } from "@/context/AuthContext";
 import { 
@@ -68,7 +68,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
   );
 
   // Active target paper (supports both user papers & virtual/community papers passed via prop)
-  const activePaper =
+  const rawActivePaper =
     (selectedPaperId
       ? papers.find((p) => p.id === selectedPaperId) ||
         (paper && paper.id === selectedPaperId ? paper : undefined)
@@ -76,12 +76,44 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     paper ||
     papers[0];
 
+  const [resolvedFullPaper, setResolvedFullPaper] = useState<Paper | null>(null);
+  const activePaper =
+    resolvedFullPaper && rawActivePaper && resolvedFullPaper.id === rawActivePaper.id
+      ? resolvedFullPaper
+      : rawActivePaper;
+
+  useEffect(() => {
+    if (!isOpen || !rawActivePaper) return;
+    if (
+      !rawActivePaper.isSummaryOnly &&
+      Array.isArray(rawActivePaper.questions) &&
+      rawActivePaper.questions.length > 0
+    ) {
+      setResolvedFullPaper(rawActivePaper);
+      return;
+    }
+    let active = true;
+    fetchFullPaper(rawActivePaper)
+      .then((full) => {
+        if (active && full) {
+          setResolvedFullPaper(full);
+          if ((full.questions?.length || 0) > 50 && questionCount === "all") {
+            setQuestionCount("sets");
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isOpen, rawActivePaper?.id]);
+
   useEffect(() => {
     if (!isOpen || !paper) return;
     setSelectedPaperId(paper.id);
     setTestTitle(paper.title || "સ્પર્ધાત્મક પરીક્ષા મોક ટેસ્ટ");
     setTestSubject(paper.subject || paper.category || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ");
-    setQuestionCount(paper.questions?.length > 50 ? "sets" : "all");
+    setQuestionCount((paper.questions?.length || paper.questionCount || 0) > 50 ? "sets" : "all");
     setGeneratedQuiz(null);
   }, [isOpen, paper]);
 
@@ -140,7 +172,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
     if (chosen) {
       setTestTitle(chosen.title);
       setTestSubject(chosen.subject || chosen.category);
-      setQuestionCount(chosen.questions?.length > 50 ? "sets" : "all");
+      setQuestionCount((chosen.questions?.length || chosen.questionCount || 0) > 50 ? "sets" : "all");
       setCustomCountInput("");
       setSelectedSetNumber(1);
     }
@@ -376,7 +408,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
                 >
                   {papers.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.title} ({p.questions?.length || 0} MCQs)
+                      {p.title} ({p.questions?.length || p.questionCount || 0} MCQs)
                     </option>
                   ))}
                 </select>

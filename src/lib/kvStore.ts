@@ -188,9 +188,13 @@ const supabaseUpsertBatch = async (
 const cleanupOldChunks = async (target: string, currentVersion: string): Promise<void> => {
   try {
     const base = SUPABASE_URL.replace(/\/$/, "");
-    // List existing chunk keys for this manifest, delete ones not belonging to currentVersion
+    // Only delete chunks older than 10 minutes so concurrent in-flight writes
+    // from another serverless lambda are never deleted mid-upload.
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const res = await fetch(
-      `${base}/rest/v1/app_settings?key=like.${encodeURIComponent(`${target}::chunk:*`)}&select=key`,
+      `${base}/rest/v1/app_settings?key=like.${encodeURIComponent(
+        `${target}::chunk:*`
+      )}&updated_at=lt.${encodeURIComponent(cutoff)}&select=key`,
       {
         headers: supabaseHeaders(),
         cache: "no-store",
@@ -736,7 +740,7 @@ export const withDistributedLock = async <T>(
   lockKey: string,
   ttlMs: number,
   fn: () => Promise<T>,
-  waitMs = 2500
+  waitMs = 10000
 ): Promise<T> => {
   const deadline = Date.now() + waitMs;
   let acquired = await acquireRedisLock(lockKey, ttlMs);

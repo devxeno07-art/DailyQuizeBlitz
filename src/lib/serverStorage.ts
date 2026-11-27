@@ -150,7 +150,7 @@ export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
   const normalized = normalizeQuiz(quiz);
   const normalizedIsSubset = isSetOrScheduledQuiz(normalized);
 
-  await withDistributedLock("quizzes_write", 8000, async () => {
+  await withDistributedLock("quizzes_write", 15000, async () => {
     await withKeyLock(QUIZZES_KEY, async () => {
       const all = await kvGetJsonStrict<TelegramQuiz[]>(QUIZZES_KEY, []);
       const list = Array.isArray(all) ? all : [];
@@ -246,6 +246,31 @@ export const getServerQuizByCode = async (
         q.paperId?.toUpperCase() === raw.toUpperCase())
   );
   if (match) return match;
+
+  // 6. Resilient fallback to per-paper store (kv:gsrtc:paper_*.json)
+  const fallbackPaper = await getPaperByIdOrCodeFromServer(raw, clean).catch(() => null);
+  if (fallbackPaper && Array.isArray(fallbackPaper.questions) && fallbackPaper.questions.length > 0) {
+    return {
+      code: String(fallbackPaper.testCode || clean).trim().toUpperCase(),
+      paperId: fallbackPaper.id,
+      title: fallbackPaper.title || "મોક ટેસ્ટ",
+      subject: fallbackPaper.subject || fallbackPaper.category || "સામાન્ય જ્ઞાન",
+      timePerQuestion: Math.max(
+        10,
+        Math.min(
+          120,
+          Math.round(
+            ((fallbackPaper.timeLimitMinutes || 30) * 60) /
+              Math.max(1, fallbackPaper.questions.length)
+          )
+        )
+      ),
+      questions: fallbackPaper.questions,
+      createdBy: fallbackPaper.userName || "Creator",
+      creatorPhone: fallbackPaper.creatorPhone || fallbackPaper.userId || "server",
+      createdAt: fallbackPaper.createdAt || fallbackPaper.updatedAt || new Date().toISOString(),
+    };
+  }
 
   return null;
 };
@@ -563,18 +588,28 @@ export const getServerAttemptsFor = async (
 // ==========================================
 
 export const getServerOverviewStats = async (): Promise<ServerOverviewStats> => {
-  const [quizzes, sessions, attempts, schedules, config] = await Promise.all([
+  const [quizzes, paperMetas, sessions, attempts, schedules, config] = await Promise.all([
     getAllServerQuizzes(),
+    getServerPapersMeta().catch(() => [] as PaperMetaRecord[]),
     getAllSessions(),
     getAllServerAttempts(),
     getAllServerSchedules(),
     getServerBotConfig(),
   ]);
 
-  const totalQuizQuestions = quizzes.reduce(
-    (sum, q) => sum + (q.questions?.length || 0),
+  const masterQuizzes = quizzes.filter((q) => !q.parentPaperId && !String(q.paperId || "").startsWith("sched_"));
+  const paperIdSet = new Set(paperMetas.map((m) => m.id));
+  const extraQuizzesQ = masterQuizzes
+    .filter((q) => !q.paperId || !paperIdSet.has(q.paperId))
+    .reduce((sum, q) => sum + (q.questions?.length || 0), 0);
+  const paperMetaTotalQ = paperMetas.reduce(
+    (sum, m) => sum + (Number(m.questionCount) || 0),
     0
   );
+  const rawQuizQ = quizzes.reduce((sum, q) => sum + (q.questions?.length || 0), 0);
+  const totalQuizQuestions = Math.max(paperMetaTotalQ + extraQuizzesQ, rawQuizQ);
+  const totalQuizCount = Math.max(paperMetas.length, quizzes.length);
+
   const allParticipants = new Set<string>();
   sessions.forEach((session) => {
     Object.keys(session.participants || {}).forEach((id) =>
@@ -590,7 +625,7 @@ export const getServerOverviewStats = async (): Promise<ServerOverviewStats> => 
       : 0;
 
   return {
-    quizzes: quizzes.length,
+    quizzes: totalQuizCount,
     totalQuizQuestions,
     sessions: sessions.length,
     activeSessions: sessions.filter((s) => s.status === "active").length,
@@ -1181,7 +1216,7 @@ export const saveServerPapersBatch = async (
   if (options.alsoSyncQuizzes) {
     const withQuiz = finalSaved.filter((p) => p.testCode && (p.questions?.length || 0) > 0);
     if (withQuiz.length > 0) {
-      await withDistributedLock("quizzes_write", 8000, async () => {
+      await withDistributedLock("quizzes_write", 15000, async () => {
         await withKeyLock(QUIZZES_KEY, async () => {
           const allQ = await kvGetJsonStrict<TelegramQuiz[]>(QUIZZES_KEY, []);
           const list = Array.isArray(allQ) ? allQ : [];

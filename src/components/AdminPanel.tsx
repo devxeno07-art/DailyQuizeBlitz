@@ -705,7 +705,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       shuffleQuestions: schedShuffle,
       useSetProgression: schedMode === "specific_test" ? schedUseSetProgression : false,
       currentSetIndex: existingSched?.currentSetIndex || 0,
-      totalPaperQuestions: selectedPaper?.questions?.length || existingSched?.totalPaperQuestions,
+      totalPaperQuestions: selectedPaper ? getPaperQCount(selectedPaper) : existingSched?.totalPaperQuestions,
       questionCount: Number(schedQuestionCount) || 25,
       timePerQuestion: Number(schedTimePerQ) || 30,
       scheduledTime: schedDailyTime,
@@ -1315,7 +1315,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <span className="text-xs font-bold">કુલ યુઝર્સ</span>
                   <Users className="w-4 h-4" />
                 </div>
-                <div className="text-2xl font-black text-slate-900 mt-2">{users.length}</div>
+                <div className="text-2xl font-black text-slate-900 mt-2">{usersWithCounts.length}</div>
                 <div className="text-[10px] text-slate-500 mt-0.5">સક્રિય એકાઉન્ટ્સ</div>
               </div>
 
@@ -1324,7 +1324,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <span className="text-xs font-bold">ડિજિટલ પેપર્સ</span>
                   <FileText className="w-4 h-4" />
                 </div>
-                <div className="text-2xl font-black text-slate-900 mt-2">{allPapers.length}</div>
+                <div className="text-2xl font-black text-slate-900 mt-2">{mergedAllPapers.length}</div>
                 <div className="text-[10px] text-slate-500 mt-0.5">બનાવેલ પ્રોજેક્ટ્સ</div>
               </div>
 
@@ -1787,9 +1787,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {sourcePapers.map((sp) => {
-                    const linked = allPapers.filter((p) => p.sourcePaperId === sp.id);
+                    const linked = mergedAllPapers.filter((p) => p.sourcePaperId === sp.id);
                     const totalDigitized = linked.reduce(
-                      (max, p) => Math.max(max, p.questions?.length || 0),
+                      (max, p) => Math.max(max, getPaperQCount(p)),
                       0
                     );
                     const percent = Math.min(100, Math.round((totalDigitized / sp.targetQuestions) * 100));
@@ -1843,7 +1843,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     }}
                                     className="px-2 py-0.5 rounded-md bg-white border border-slate-300 text-slate-800 cursor-pointer hover:border-brand-500 text-[10px] font-medium"
                                   >
-                                    {lp.userName} ({lp.questions?.length || 0} MCQs)
+                                    {lp.userName} ({getPaperQCount(lp)} MCQs)
                                   </span>
                                 ))}
                               </div>
@@ -2123,7 +2123,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 const code = t.testCode || t.id;
                                 const isSelected =
                                   schedSpecificCode.toUpperCase() === code.toUpperCase();
-                                const qCount = t.questions?.length || 0;
+                                const qCount = getPaperQCount(t);
                                 return (
                                   <div
                                     key={t.id || t.testCode}
@@ -2357,17 +2357,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       (t.testCode || t.id).toUpperCase() ===
                                       schedSpecificCode.toUpperCase()
                                   );
-                                  if (sel && sel.questions?.length) {
-                                    setSchedQuestionCount(sel.questions.length);
+                                  const selQ = sel ? getPaperQCount(sel) : 0;
+                                  if (selQ > 0) {
+                                    setSchedQuestionCount(selQ);
                                   }
                                 }}
                                 className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
                               >
-                                બધા ({availableTests.find(
-                                  (t) =>
-                                    (t.testCode || t.id).toUpperCase() ===
-                                    schedSpecificCode.toUpperCase()
-                                )?.questions?.length || "All"})
+                                બધા ({(() => {
+                                  const sel = availableTests.find(
+                                    (t) =>
+                                      (t.testCode || t.id).toUpperCase() ===
+                                      schedSpecificCode.toUpperCase()
+                                  );
+                                  return (sel ? getPaperQCount(sel) : 0) || "All";
+                                })()})
                               </button>
                             )}
                           </div>

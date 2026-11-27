@@ -10,13 +10,15 @@
  * saves it under a unique code, and launches the Telegram poll run.
  */
 
-import { Question, ScheduledDailyTest, TelegramQuiz } from "@/types";
+import { Paper, Question, ScheduledDailyTest, TelegramQuiz } from "@/types";
 import {
   addPendingDelete,
+  getAllServerPapers,
   getAllServerQuizzes,
   getAllServerSchedules,
   getAllSessions,
   getAllUpcomingReminders,
+  getPaperByIdOrCodeFromServer,
   getServerBotConfig,
   removePendingDelete,
   savePaperSetDispatch,
@@ -24,7 +26,7 @@ import {
   saveServerSchedule,
   saveUpcomingReminder,
 } from "./serverStorage";
-import { acquireRedisLock } from "./kvStore";
+import { acquireRedisLock, releaseRedisLock } from "./kvStore";
 import {
   clearGroupUpcomingReminder,
   deleteTelegramMessageSafe,
@@ -178,11 +180,91 @@ const collectCandidateQuestions = (
   return dedupeQuestions(questions);
 };
 
+const paperToQuizAdapter = (p: Paper): TelegramQuiz => ({
+  code: String(p.testCode || p.id).trim().toUpperCase(),
+  paperId: p.id,
+  title: p.title || "મોક ટેસ્ટ",
+  subject: p.subject || p.category || "સામાન્ય જ્ઞાન",
+  timePerQuestion: Math.max(
+    10,
+    Math.min(
+      120,
+      Math.round(
+        ((p.timeLimitMinutes || 30) * 60) /
+          Math.max(1, p.questions?.length || p.questionCount || 20)
+      )
+    )
+  ),
+  questions: Array.isArray(p.questions) ? p.questions : [],
+  createdBy: p.userName || "Creator",
+  creatorPhone: p.creatorPhone || p.userId || "server",
+  createdAt: p.createdAt || p.updatedAt || new Date().toISOString(),
+});
+
+const mergeQuizAndPaperSources = (
+  quizzes: TelegramQuiz[],
+  papers: Paper[]
+): TelegramQuiz[] => {
+  const byPaperId = new Map<string, TelegramQuiz>();
+  const extras: TelegramQuiz[] = [];
+
+  for (const q of quizzes) {
+    // Exclude previously auto-generated set/scheduled runs from raw question pool
+    if (q.parentPaperId || String(q.paperId || "").startsWith("sched_")) {
+      continue;
+    }
+    if (q.paperId) {
+      const existing = byPaperId.get(q.paperId);
+      if (!existing || (q.questions?.length || 0) >= (existing.questions?.length || 0)) {
+        byPaperId.set(q.paperId, q);
+      }
+    } else {
+      extras.push(q);
+    }
+  }
+
+  for (const p of papers) {
+    if (!p || !Array.isArray(p.questions) || p.questions.length === 0) continue;
+    const existing = byPaperId.get(p.id);
+    if (!existing || p.questions.length >= (existing.questions?.length || 0)) {
+      byPaperId.set(p.id, paperToQuizAdapter(p));
+    }
+  }
+
+  return [...Array.from(byPaperId.values()), ...extras];
+};
+
 export const buildQuizFromSchedule = async (
   schedule: ScheduledDailyTest
 ): Promise<TelegramQuiz | null> => {
-  const quizzes = await getAllServerQuizzes();
-  const candidates = collectCandidateQuestions(quizzes, schedule);
+  let pool: TelegramQuiz[] = [];
+  let quizzes: TelegramQuiz[] = [];
+
+  if (schedule.mode === "specific_test") {
+    const [directPaper, loadedQuizzes] = await Promise.all([
+      getPaperByIdOrCodeFromServer(
+        schedule.specificPaperId,
+        schedule.specificTestCode
+      ).catch(() => null),
+      getAllServerQuizzes().catch(() => [] as TelegramQuiz[]),
+    ]);
+    quizzes = loadedQuizzes;
+    if (directPaper && Array.isArray(directPaper.questions) && directPaper.questions.length > 0) {
+      pool = mergeQuizAndPaperSources(quizzes, [directPaper]);
+    } else {
+      const papers = await getAllServerPapers().catch(() => [] as Paper[]);
+      pool = mergeQuizAndPaperSources(quizzes, papers);
+    }
+  } else {
+    const [loadedQuizzes, papers] = await Promise.all([
+      getAllServerQuizzes().catch(() => [] as TelegramQuiz[]),
+      getAllServerPapers().catch(() => [] as Paper[]),
+    ]);
+    quizzes = loadedQuizzes;
+    pool = mergeQuizAndPaperSources(quizzes, papers);
+  }
+
+  const candidates = collectCandidateQuestions(pool, schedule);
   if (candidates.length === 0) return null;
 
   const requested = Math.max(
@@ -204,7 +286,7 @@ export const buildQuizFromSchedule = async (
     const batch = candidates.slice(startIdx, endIdx);
     selected = shouldShuffle ? shuffle(batch) : batch;
 
-    const matchedSource = quizzes.find(
+    const matchedSource = pool.find(
       (q) =>
         (schedule.specificTestCode &&
           q.code?.toUpperCase() === schedule.specificTestCode.toUpperCase()) ||
@@ -244,7 +326,7 @@ export const buildQuizFromSchedule = async (
   let subjectLabel = "ડેઇલી મિક્સ ઓલ વિષય";
 
   if (schedule.mode === "specific_test") {
-    const matched = quizzes.find(
+    const matched = pool.find(
       (q) =>
         (schedule.specificTestCode &&
           q.code?.toUpperCase() === schedule.specificTestCode.toUpperCase()) ||
@@ -446,6 +528,7 @@ export const runDueSchedules = async (
     if (dispatch.ok) {
       result.ran += 1;
     } else {
+      await releaseRedisLock(lockKey).catch(() => {});
       result.errors.push(
         `Schedule ${schedule.id}: ${dispatch.error || "unknown error"}`
       );
