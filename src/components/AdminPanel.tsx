@@ -116,18 +116,69 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [supabasePinError, setSupabasePinError] = useState<string | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
 
+  // Redis -> Supabase Legacy Migration State
+  const [redisProbe, setRedisProbe] = useState<{
+    redisHost?: string;
+    redisBlocked?: boolean;
+    redisError?: string | null;
+    redisCounts?: { quizzes: number; papers: number };
+    supabaseCounts?: { quizzes: number; papers: number };
+  } | null>(null);
+  const [migratingRedis, setMigratingRedis] = useState(false);
+  const [migrateMsg, setMigrateMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [manualBackupJson, setManualBackupJson] = useState("");
+
   const fetchSupabaseStatus = async () => {
     setLoadingSupabase(true);
     setSupabasePinSuccess(null);
     setSupabasePinError(null);
     try {
-      const res = await fetch("/api/admin/supabase-status", { cache: "no-store" });
+      const [res, migRes] = await Promise.all([
+        fetch("/api/admin/supabase-status", { cache: "no-store" }),
+        fetch("/api/admin/migrate-redis", { cache: "no-store" }).catch(() => null),
+      ]);
       const data = await res.json();
       setSupabaseData(data);
+      if (migRes && migRes.ok) {
+        const mData = await migRes.json().catch(() => null);
+        if (mData?.ok) setRedisProbe(mData);
+      }
     } catch (err: any) {
       setSupabaseData({ connected: false, error: err?.message || "Failed to reach server" });
     } finally {
       setLoadingSupabase(false);
+    }
+  };
+
+  const handleMigrateFromRedis = async (useManualJson = false) => {
+    setMigratingRedis(true);
+    setMigrateMsg(null);
+    try {
+      const res = await fetch("/api/admin/migrate-redis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(useManualJson ? { rawJson: manualBackupJson } : {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setMigrateMsg({
+          ok: true,
+          text: `સફળતાપૂર્વક ${data.papersImported || 0} પેપર્સ, ${data.quizzesImported || 0} ક્વિઝ અને ${data.usersImported || 0} યુઝર્સ Supabase માં રિસ્ટોર થયા!`,
+        });
+        if (useManualJson) setManualBackupJson("");
+        await Promise.all([fetchSupabaseStatus(), loadUsersAndPapersFromServer()]);
+      } else {
+        setMigrateMsg({
+          ok: false,
+          text: data.quotaBlocked
+            ? `Upstash Redis (${redisProbe?.redisHost || "factual-hippo"}) હજુ લિમિટમાં લોક છે: Upstash Console પર જઈ Database અનલોક/અપગ્રેડ કરો અથવા Data Browser માંથી gsrtc:quizzes.json કોપી કરી નીચે પેસ્ટ કરો.`
+            : data.error || "માઇગ્રેશન થઈ શક્યું નહીં.",
+        });
+      }
+    } catch (err: any) {
+      setMigrateMsg({ ok: false, text: err?.message || "માઇગ્રેશન ફેલ થયું." });
+    } finally {
+      setMigratingRedis(false);
     }
   };
 
@@ -3464,6 +3515,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </button>
                     </div>
                   </form>
+                </div>
+
+                {/* Legacy Upstash Redis -> Supabase Recovery Card */}
+                <div className="p-5 rounded-3xl bg-white border border-amber-200 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-100">
+                    <div>
+                      <h5 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                        <span>🔄 જૂના Upstash Redis ના 50+ ટેસ્ટ્સ Supabase માં રિસ્ટોર કરો</span>
+                      </h5>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {redisProbe?.redisBlocked
+                          ? `Upstash (${redisProbe.redisHost || "Redis"}) ની ફ્રી પ્લાન લિમિટ પૂરી થઈ હોવાથી HTTP 403 લોક છે. Upstash Console માંથી અનલોક કર્યા પછી બટન દબાવો અથવા gsrtc:quizzes.json નીચે પેસ્ટ કરો.`
+                          : `હાલ Supabase માં ${redisProbe?.supabaseCounts?.papers ?? mergedAllPapers.length} પેપર્સ • ${redisProbe?.supabaseCounts?.quizzes ?? 0} ક્વિઝ છે.`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleMigrateFromRedis(false)}
+                      disabled={migratingRedis}
+                      className="h-9 px-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 shrink-0"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${migratingRedis ? "animate-spin" : ""}`} />
+                      <span>{migratingRedis ? "રિસ્ટોર ચાલુ..." : "Redis માંથી ઓટો-રિસ્ટોર"}</span>
+                    </button>
+                  </div>
+
+                  {migrateMsg && (
+                    <div
+                      className={`p-3 rounded-xl text-xs font-bold border ${
+                        migrateMsg.ok
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                          : "bg-amber-50 border-amber-300 text-amber-900"
+                      }`}
+                    >
+                      {migrateMsg.text}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      વિકલ્પ ૨: Upstash Console → Data Browser → <code className="font-mono text-indigo-700">gsrtc:quizzes.json</code> કોપી કરી અહીં પેસ્ટ કરો:
+                    </label>
+                    <textarea
+                      value={manualBackupJson}
+                      onChange={(e) => setManualBackupJson(e.target.value)}
+                      rows={3}
+                      placeholder='[{"code":"TEST-1001","title":"...","questions":[...]}]'
+                      className="w-full p-3 rounded-xl border border-slate-300 font-mono text-[11px] bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleMigrateFromRedis(true)}
+                        disabled={migratingRedis || !manualBackupJson.trim()}
+                        className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs inline-flex items-center gap-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>JSON માંથી Supabase માં ઈમ્પોર્ટ કરો</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 1-Click SQL Setup Card */}
