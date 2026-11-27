@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { Paper } from "@/types";
+import { fetchFullPaper } from "@/lib/storage";
 import { Header } from "@/components/Header";
 import { LoginModal } from "@/components/LoginModal";
 import { PaperList } from "@/components/PaperList";
@@ -47,30 +48,36 @@ export default function Home() {
   const [mixModalOpen, setMixModalOpen] = useState(false);
   const [activeModalPaper, setActiveModalPaper] = useState<Paper | null>(null);
 
-  const handleSelectPaper = (paper: Paper) => {
-    setSelectedPaper(paper);
+  const handleSelectPaper = async (paper: Paper) => {
+    const full = await fetchFullPaper(paper);
+    setSelectedPaper(full);
   };
 
-  const handleTakeTest = (paper: Paper) => {
-    setActiveModalPaper(paper);
+  const handleTakeTest = async (paper: Paper) => {
+    const full = await fetchFullPaper(paper);
+    setActiveModalPaper(full);
     setExamModalOpen(true);
   };
 
-  const handleOpenExport = (paper: Paper) => {
-    setActiveModalPaper(paper);
+  const handleOpenExport = async (paper: Paper) => {
+    const full = await fetchFullPaper(paper);
+    setActiveModalPaper(full);
     setExportModalOpen(true);
   };
 
-  const handleOpenLeaderboard = (paper: Paper) => {
-    setActiveModalPaper(paper);
+  const handleOpenLeaderboard = async (paper: Paper) => {
+    const full = await fetchFullPaper(paper);
+    setActiveModalPaper(full);
     setLeaderboardModalOpen(true);
   };
 
-  const handleOpenTelegram = (paper?: Paper) => {
+  const handleOpenTelegram = async (paper?: Paper) => {
     if (paper) {
-      setActiveModalPaper(paper);
+      const full = await fetchFullPaper(paper);
+      setActiveModalPaper(full);
     } else if (papers.length > 0) {
-      setActiveModalPaper(papers[0]);
+      const full = await fetchFullPaper(papers[0]);
+      setActiveModalPaper(full);
     }
     setTelegramModalOpen(true);
   };

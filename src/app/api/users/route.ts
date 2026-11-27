@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminRequest, unauthorized } from "@/lib/adminAuth";
 import {
-  getAllServerPapers,
   getAllServerQuizzes,
   getAllServerUsers,
+  getServerPapersMeta,
+  metaToSummaryPaper,
   normalizeUserId,
   saveServerUser,
   toggleServerUserLibraryAccess,
@@ -13,17 +14,16 @@ import { Paper, UserProfile } from "@/types";
 export const dynamic = "force-dynamic";
 
 const buildUnifiedServerPapers = async (): Promise<Paper[]> => {
-  const [serverPapers, quizzes] = await Promise.all([
-    getAllServerPapers(),
+  const [metaList, quizzes] = await Promise.all([
+    getServerPapersMeta(),
     getAllServerQuizzes(),
   ]);
 
   const map = new Map<string, Paper>();
 
-  for (const p of serverPapers) {
-    const key = p.id || (p.testCode ? p.testCode.toUpperCase() : "");
-    if (!key) continue;
-    map.set(key, p);
+  for (const m of metaList) {
+    const sp = metaToSummaryPaper(m);
+    if (sp.id) map.set(sp.id, sp);
   }
 
   for (const q of quizzes) {
@@ -46,13 +46,12 @@ const buildUnifiedServerPapers = async (): Promise<Paper[]> => {
       subject: q.subject || "સામાન્ય જ્ઞાન & કરંટ અફેર્સ",
       category: "સ્પર્ધાત્મક પરીક્ષા",
       targetQuestions: q.questions?.length || 0,
-      timeLimitMinutes: Math.max(
-        10,
-        Math.ceil(((q.questions?.length || 20) * (q.timePerQuestion || 30)) / 60)
-      ),
+      questionCount: q.questions?.length || 0,
+      isSummaryOnly: true,
+      timeLimitMinutes: 60,
       isPublic: true,
       testCode: q.code,
-      questions: Array.isArray(q.questions) ? q.questions : [],
+      questions: [],
       createdAt: q.createdAt || new Date().toISOString(),
       updatedAt: q.createdAt || new Date().toISOString(),
     };
@@ -69,13 +68,12 @@ const buildUnifiedServerPapers = async (): Promise<Paper[]> => {
     if (!existing) {
       map.set(mapped.id, mapped);
     } else if (
-      (mapped.questions?.length || 0) > (existing.questions?.length || 0)
+      (mapped.questionCount || 0) > (existing.questionCount || 0)
     ) {
       map.set(existing.id, {
-        ...mapped,
-        id: existing.id,
-        userId: existing.userId || mapped.userId,
-        userName: existing.userName || mapped.userName,
+        ...existing,
+        questionCount: mapped.questionCount,
+        targetQuestions: mapped.questionCount,
       });
     }
   }
@@ -144,7 +142,7 @@ export async function GET(req: NextRequest) {
         (p) => normalizeUserId(p.userId || p.creatorPhone || "") === u.id
       );
       const totalQ = userPapers.reduce(
-        (sum, p) => sum + (p.questions?.length || 0),
+        (sum, p) => sum + (p.questions?.length || p.questionCount || 0),
         0
       );
       return {

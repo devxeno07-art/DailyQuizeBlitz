@@ -8,6 +8,7 @@ import {
   saveTemporaryDraft, 
   getTemporaryDraft, 
   deletePaper, 
+  fetchFullPaper,
   generateTestCode 
 } from "@/lib/storage";
 import { 
@@ -44,6 +45,7 @@ import { BulkImportModal } from "./BulkImportModal";
 
 interface PaperEditorProps {
   paper: Paper;
+  isAdminMode?: boolean;
   onBack: () => void;
   onTakeTest: (paper: Paper) => void;
   onExport: (paper: Paper) => void;
@@ -54,6 +56,7 @@ interface PaperEditorProps {
 
 export const PaperEditor: React.FC<PaperEditorProps> = ({
   paper,
+  isAdminMode = false,
   onBack,
   onTakeTest,
   onExport,
@@ -67,15 +70,17 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedTestCode, setCopiedTestCode] = useState(false);
 
-  // Check ownership
-  const isOwner = Boolean(
-    user &&
-      (currentPaper.userId === user.id ||
-        (currentPaper.creatorPhone &&
-          user.phoneNumber &&
-          currentPaper.creatorPhone === user.phoneNumber) ||
-        (!currentPaper.userId && !currentPaper.creatorPhone))
-  );
+  // Check ownership (Admin can edit any user's paper seamlessly)
+  const isOwner =
+    Boolean(isAdminMode) ||
+    Boolean(
+      user &&
+        (currentPaper.userId === user.id ||
+          (currentPaper.creatorPhone &&
+            user.phoneNumber &&
+            currentPaper.creatorPhone === user.phoneNumber) ||
+          (!currentPaper.userId && !currentPaper.creatorPhone))
+    );
 
   // Editor Form State
   const [isEditingQuestion, setIsEditingQuestion] = useState(false);
@@ -147,15 +152,31 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
     setQuestions(cloned.questions);
   };
 
-  // Check for unsaved temporary draft on initial mount
+  // Load full paper if opened with a summary-only object, and check local draft
   useEffect(() => {
-    const draft = getTemporaryDraft(paper.id);
-    if (draft && draft.length > (paper.questions?.length || 0)) {
-      if (confirm(`તમારા માટે ${draft.length} પ્રશ્નોનો અગાઉનો વણસેવ કરેલો ડ્રાફ્ટ મળ્યો છે. શું તમે તેને લોડ કરવા માંગો છો?`)) {
-        setQuestions(draft);
-        persistChanges(draft, isCompleted);
+    let active = true;
+    const resolveAndCheckDraft = async () => {
+      let basePaper = paper;
+      if (paper.isSummaryOnly || ((paper.questionCount || 0) > 0 && (paper.questions?.length || 0) === 0)) {
+        const full = await fetchFullPaper(paper);
+        if (!active) return;
+        basePaper = full;
+        setCurrentPaper(full);
+        setQuestions(full.questions || []);
       }
-    }
+
+      const draft = getTemporaryDraft(basePaper.id);
+      if (draft && draft.length > (basePaper.questions?.length || 0)) {
+        if (confirm(`તમારા માટે ${draft.length} પ્રશ્નોનો અગાઉનો વણસેવ કરેલો ડ્રાફ્ટ મળ્યો છે. શું તમે તેને લોડ કરવા માંગો છો?`)) {
+          setQuestions(draft);
+          persistChanges(draft, isCompleted);
+        }
+      }
+    };
+    resolveAndCheckDraft();
+    return () => {
+      active = false;
+    };
   }, [paper.id]);
 
   // Save changes to database and draft cache
@@ -166,6 +187,8 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
     const code = currentPaper.testCode || generateTestCode(currentPaper.category || "GSRTC");
     const updated: Paper = {
       ...currentPaper,
+      isSummaryOnly: false,
+      questionCount: newQuestions.length,
       testCode: code,
       questions: newQuestions,
       isDigitizedCompleted: completedState !== undefined ? completedState : isCompleted,
@@ -173,7 +196,7 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
     };
 
     setCurrentPaper(updated);
-    await savePaper(updated);
+    await savePaper(updated, { allowEmptyQuestions: newQuestions.length === 0 });
 
     setSaveStatus("saved");
     setLastSaved(new Date());

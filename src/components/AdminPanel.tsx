@@ -32,7 +32,9 @@ import {
   mergeUsersList,
   normalizeClientUserId,
   setLocalUsers,
-  fetchCommunityPapers
+  fetchCommunityPapersSummary,
+  fetchFullPaper,
+  deletePaper
 } from "@/lib/storage";
 import { getStoredFirebaseConfig, initFirebase } from "@/lib/firebase";
 import { 
@@ -351,7 +353,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       const [usersRes, serverPapers, statsRes] = await Promise.all([
         fetch("/api/users", { cache: "no-store" }).catch(() => null),
-        fetchCommunityPapers().catch(() => [] as Paper[]),
+        fetchCommunityPapersSummary().catch(() => [] as Paper[]),
         fetch("/api/admin/stats", { cache: "no-store" }).catch(() => null),
       ]);
 
@@ -407,7 +409,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           fetch("/api/telegram/config", { cache: "no-store" }),
           fetch("/api/admin/stats", { cache: "no-store" }),
           fetchServerScheduledTests().catch(() => [] as ScheduledDailyTest[]),
-          fetchCommunityPapers().catch(() => [] as Paper[]),
+          fetchCommunityPapersSummary().catch(() => [] as Paper[]),
           fetch("/api/users", { cache: "no-store" }).catch(() => null),
           fetch("/api/papers/sets", { cache: "no-store" }).catch(() => null),
         ]);
@@ -522,13 +524,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setServerStats(null);
   };
 
+  const getPaperQCount = (p: Paper) => p.questions?.length || p.questionCount || 0;
+
   const mergedAllPapers = useMemo(
     () => mergePapersList(allPapers, serverCommunityPapers),
     [allPapers, serverCommunityPapers]
   );
 
   const totalQuestions = mergedAllPapers.reduce(
-    (sum, p) => sum + (p.questions?.length || 0),
+    (sum, p) => sum + getPaperQCount(p),
     0
   );
 
@@ -560,7 +564,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           (p) => normalizeClientUserId(p.userId || p.creatorPhone || "") === u.id
         );
         const uQuestions = userPapers.reduce(
-          (sum, p) => sum + (p.questions?.length || 0),
+          (sum, p) => sum + getPaperQCount(p),
           0
         );
         return {
@@ -632,12 +636,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     allPapers.forEach((p) => {
       const key = (p.testCode || p.id).toUpperCase();
       const existing = map.get(key);
-      if (!existing || (p.questions?.length || 0) >= (existing.questions?.length || 0)) {
+      if (!existing || getPaperQCount(p) >= getPaperQCount(existing)) {
         map.set(key, p);
       }
     });
     return Array.from(map.values()).sort(
-      (a, b) => (b.questions?.length || 0) - (a.questions?.length || 0)
+      (a, b) => getPaperQCount(b) - getPaperQCount(a)
     );
   }, [allPapers, serverCommunityPapers]);
 
@@ -658,7 +662,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         const key = (p.testCode || p.id).toUpperCase();
         if (!seen.has(key)) {
           seen.add(key);
-          count += p.questions?.length || 0;
+          count += getPaperQCount(p);
         }
       }
     });
@@ -789,9 +793,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     } catch {}
   };
 
-  const handleOpenSetManager = (paper: Paper) => {
-    setSetManagerPaper(paper);
-    const total = paper.questions?.length || 0;
+  const handleOpenSetManager = async (paper: Paper) => {
+    const full = await fetchFullPaper(paper);
+    setSetManagerPaper(full);
+    const total = full.questions?.length || full.questionCount || 0;
     const defaultSize = total >= 200 ? 50 : total >= 60 ? 30 : 20;
     setSetManagerSize(defaultSize);
     setSetManagerCustomSize(String(defaultSize));
@@ -801,6 +806,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => {
       document.getElementById("admin-set-manager-panel")?.scrollIntoView({ behavior: "smooth" });
     }, 60);
+  };
+
+  const handleAdminDeletePaper = async (paper: Paper) => {
+    const qCount = getPaperQCount(paper);
+    if (
+      !confirm(
+        `શું તમે ખરેખર "${paper.title}" (${qCount} પ્રશ્નો) કાયમ માટે ડિલીટ કરવા માંગો છો?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await deletePaper(paper.id, paper.testCode);
+      setAllPapers((prev) => prev.filter((p) => p.id !== paper.id));
+      setServerCommunityPapers((prev) =>
+        prev.filter(
+          (p) =>
+            p.id !== paper.id &&
+            (!paper.testCode || p.testCode?.toUpperCase() !== paper.testCode.toUpperCase())
+        )
+      );
+      refreshServerStats();
+    } catch (err: any) {
+      alert(err?.message || "પેપર ડિલીટ થઈ શક્યું નહીં.");
+    }
   };
 
   const handleDispatchSetNow = async (set: QuestionSet) => {
@@ -1477,19 +1507,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                             <h5 className="font-bold text-slate-900 text-sm">{paper.title}</h5>
                             <p className="text-xs text-slate-500">વિષય: {paper.subject || "-"}</p>
-                            <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 text-xs">
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/60 text-xs">
                               <span className="font-bold text-indigo-700">
-                                {paper.questions?.length || 0} પ્રશ્નો
+                                {getPaperQCount(paper)} પ્રશ્નો
                               </span>
-                              <button
-                                onClick={() => {
-                                  onInspectPaper?.(paper);
-                                  onClose?.();
-                                }}
-                                className="px-3 py-1 rounded-lg bg-brand-600 text-white font-bold text-xs hover:bg-brand-700"
-                              >
-                                પેપર ખોલો
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const full = await fetchFullPaper(paper);
+                                    onInspectPaper?.(full);
+                                    onClose?.();
+                                  }}
+                                  className="h-8 px-3 rounded-lg bg-brand-600 text-white font-bold text-xs hover:bg-brand-700 inline-flex items-center gap-1"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  <span>એડિટ / ખોલો</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdminDeletePaper(paper)}
+                                  className="w-8 h-8 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center transition-colors"
+                                  title="પેપર ડિલીટ કરો"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1586,7 +1629,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       {paper.testCode || "TEST"}
                                     </span>
                                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
-                                      {paper.questions?.length || 0} MCQs
+                                      {getPaperQCount(paper)} MCQs
                                     </span>
                                   </div>
                                   <h5 className="font-bold text-slate-900 text-sm line-clamp-2">
@@ -1597,25 +1640,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   </p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/70">
+                                <div className="flex items-center gap-2 pt-2 border-t border-slate-200/70">
                                   <button
                                     type="button"
                                     onClick={() => handleOpenSetManager(paper)}
-                                    className="h-9 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-xs inline-flex items-center justify-center gap-1"
+                                    className="h-9 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-xs inline-flex items-center justify-center gap-1 shrink-0"
                                   >
                                     <Layers className="w-3.5 h-3.5" />
                                     <span>સેટ્સ</span>
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      onInspectPaper?.(paper);
+                                    onClick={async () => {
+                                      const full = await fetchFullPaper(paper);
+                                      onInspectPaper?.(full);
                                       onClose?.();
                                     }}
-                                    className="h-9 px-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs inline-flex items-center justify-center gap-1"
+                                    className="flex-1 h-9 px-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs inline-flex items-center justify-center gap-1"
                                   >
-                                    <Eye className="w-3.5 h-3.5" />
-                                    <span>પેપર ખોલો</span>
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    <span>એડિટ / ખોલો</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminDeletePaper(paper)}
+                                    className="w-9 h-9 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center transition-colors shrink-0"
+                                    title="ટેસ્ટ ડિલીટ કરો"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
                                   </button>
                                 </div>
                               </div>

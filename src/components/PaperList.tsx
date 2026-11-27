@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Paper, Question } from "@/types";
-import { deletePaper, savePaper, generateTestCode, fetchCommunityPapers } from "@/lib/storage";
+import { deletePaper, savePaper, generateTestCode, fetchCommunityPapersSummary, fetchFullPaper } from "@/lib/storage";
 import { getStudentPaperProgress } from "@/lib/testSets";
 import { SAMPLE_GSRTC_PAPER } from "@/data/samplePaper";
 import { 
@@ -67,7 +67,7 @@ export const PaperList: React.FC<PaperListProps> = ({
   const loadCommunity = useCallback(async () => {
     setLoadingCommunity(true);
     try {
-      const list = await fetchCommunityPapers();
+      const list = await fetchCommunityPapersSummary();
       setCommunityPapers(list);
     } catch (e) {
       console.warn("Could not load community papers", e);
@@ -136,7 +136,8 @@ export const PaperList: React.FC<PaperListProps> = ({
     return matchesSearch && matchesCategory;
   });
 
-  const totalQuestions = myPapers.reduce((sum, p) => sum + (p.questions?.length || 0), 0);
+  const getQCount = (p: Paper) => p.questions?.length || p.questionCount || 0;
+  const totalQuestions = myPapers.reduce((sum, p) => sum + getQCount(p), 0);
   const categories = [
     "all",
     ...Array.from(new Set(activePapers.map((p) => p.category).filter(Boolean))),
@@ -283,7 +284,8 @@ export const PaperList: React.FC<PaperListProps> = ({
   const handleDuplicatePaper = async (paper: Paper, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await savePaper(buildPaperForUser(paper, " (કોપી)"));
+      const full = await fetchFullPaper(paper);
+      await savePaper(buildPaperForUser(full, " (કોપી)"));
     } catch (err: any) {
       alert(err?.message || "પેપરની કોપી બનાવી શકાઈ નહીં.");
     }
@@ -602,7 +604,7 @@ export const PaperList: React.FC<PaperListProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredPapers.map((paper) => {
-            const count = paper.questions?.length || 0;
+            const count = getQCount(paper);
             const target = paper.targetQuestions || 50;
             const percent = Math.min(100, Math.round((count / target) * 100));
 

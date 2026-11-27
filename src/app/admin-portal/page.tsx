@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { AdminPanel } from "@/components/AdminPanel";
 import { Paper } from "@/types";
+import { fetchFullPaper } from "@/lib/storage";
 import { PaperEditor } from "@/components/PaperEditor";
 import { ExamModal } from "@/components/ExamModal";
 import { ExportModal } from "@/components/ExportModal";
@@ -20,6 +21,7 @@ export default function AdminPortalPage() {
         <div className="min-h-screen bg-slate-50">
           <PaperEditor
             paper={selectedPaper}
+            isAdminMode={true}
             onBack={() => setSelectedPaper(null)}
             onTakeTest={() => setExamModalOpen(true)}
             onExport={() => setExportModalOpen(true)}
@@ -45,7 +47,10 @@ export default function AdminPortalPage() {
         <AdminPanel
           isOpen={true}
           standalone={true}
-          onInspectPaper={(paper) => setSelectedPaper(paper)}
+          onInspectPaper={async (paper) => {
+            const full = await fetchFullPaper(paper);
+            setSelectedPaper(full);
+          }}
         />
       )}
     </div>

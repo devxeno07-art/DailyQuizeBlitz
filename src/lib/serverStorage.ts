@@ -14,6 +14,7 @@ import {
   getStorageMode,
   kvDelete,
   kvGetJson,
+  kvGetJsonBatch,
   kvGetJsonStrict,
   kvSetJson,
   withKeyLock,
@@ -879,7 +880,15 @@ export const toggleServerUserLibraryAccess = async (
 export interface PaperMetaRecord {
   id: string;
   userId: string;
+  creatorPhone?: string;
+  userName?: string;
+  title?: string;
+  subject?: string;
+  category?: string;
   testCode?: string;
+  targetQuestions?: number;
+  timeLimitMinutes?: number;
+  isPublic?: boolean;
   updatedAt?: string;
   createdAt?: string;
   questionCount: number;
@@ -892,47 +901,156 @@ const paperItemKey = (id: string): string =>
 const toPaperMeta = (p: Paper): PaperMetaRecord => ({
   id: p.id,
   userId: normalizeUserId(p.userId || p.creatorPhone || ""),
+  creatorPhone: normalizeUserId(p.creatorPhone || p.userId || ""),
+  userName: p.userName || "શિક્ષક / વિદ્યાર્થી",
+  title: p.title || "નવું પ્રશ્નપત્ર",
+  subject: p.subject || "સામાન્ય જ્ઞાન",
+  category: p.category || "સ્પર્ધાત્મક પરીક્ષા",
   testCode: p.testCode ? String(p.testCode).trim().toUpperCase() : undefined,
+  targetQuestions: p.targetQuestions || p.questions?.length || p.questionCount || 50,
+  timeLimitMinutes: p.timeLimitMinutes || 60,
+  isPublic: p.isPublic !== false,
   updatedAt: p.updatedAt,
   createdAt: p.createdAt,
-  questionCount: p.questions?.length || 0,
+  questionCount: p.questions?.length || p.questionCount || 0,
+});
+
+export const metaToSummaryPaper = (m: PaperMetaRecord): Paper => ({
+  id: m.id,
+  userId: m.userId,
+  creatorPhone: m.creatorPhone || m.userId,
+  userName: m.userName || "શિક્ષક / વિદ્યાર્થી",
+  title: m.title || "મોક ટેસ્ટ",
+  subject: m.subject || "સામાન્ય જ્ઞાન",
+  category: m.category || "સ્પર્ધાત્મક પરીક્ષા",
+  targetQuestions: m.targetQuestions || m.questionCount || 50,
+  questionCount: m.questionCount || 0,
+  isSummaryOnly: true,
+  timeLimitMinutes: m.timeLimitMinutes || 60,
+  isPublic: m.isPublic !== false,
+  testCode: m.testCode,
+  questions: [],
+  createdAt: m.createdAt || new Date().toISOString(),
+  updatedAt: m.updatedAt || m.createdAt || new Date().toISOString(),
 });
 
 export const getServerPapersMeta = async (): Promise<PaperMetaRecord[]> => {
   const idx = await kvGetJson<PaperMetaRecord[]>(PAPER_INDEX_KEY, []);
-  if (Array.isArray(idx) && idx.length > 0) return idx;
+  if (Array.isArray(idx) && idx.length > 0) {
+    // Self-heal if legacy index rows lack `title`
+    if (idx.some((m) => !m.title)) {
+      const full = await getAllServerPapers();
+      if (full.length > 0) {
+        const healed = full.map(toPaperMeta);
+        kvSetJson(PAPER_INDEX_KEY, healed).catch(() => {});
+        return healed;
+      }
+    }
+    return idx;
+  }
   const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
   return Array.isArray(legacy) ? legacy.map(toPaperMeta) : [];
 };
 
-export const getAllServerPapers = async (): Promise<Paper[]> => {
+export const getPaperByIdOrCodeFromServer = async (
+  paperId?: string,
+  testCode?: string
+): Promise<Paper | null> => {
+  const pid = String(paperId || "").trim();
+  const code = String(testCode || "").trim().toUpperCase();
+
+  if (pid) {
+    const direct = await kvGetJson<Paper | null>(paperItemKey(pid), null);
+    if (direct && direct.id) return direct;
+  }
+
+  if (code) {
+    const idx = await kvGetJson<PaperMetaRecord[]>(PAPER_INDEX_KEY, []);
+    const matchMeta = Array.isArray(idx)
+      ? idx.find((m) => m.testCode && m.testCode.toUpperCase() === code)
+      : undefined;
+    if (matchMeta) {
+      const direct = await kvGetJson<Paper | null>(paperItemKey(matchMeta.id), null);
+      if (direct && direct.id) return direct;
+    }
+
+    const quiz = await getServerQuizByCode(code);
+    if (quiz) {
+      const uid = normalizeUserId(quiz.creatorPhone || "");
+      return {
+        id: quiz.paperId || `server_${quiz.code}`,
+        userId: uid,
+        creatorPhone: uid,
+        userName: quiz.createdBy || "શિક્ષક / વિદ્યાર્થી",
+        title: quiz.title,
+        subject: quiz.subject || "સામાન્ય જ્ઞાન",
+        category: "સ્પર્ધાત્મક પરીક્ષા",
+        targetQuestions: quiz.questions?.length || 0,
+        questionCount: quiz.questions?.length || 0,
+        timeLimitMinutes: Math.max(
+          10,
+          Math.ceil(((quiz.questions?.length || 20) * (quiz.timePerQuestion || 30)) / 60)
+        ),
+        isPublic: true,
+        testCode: quiz.code,
+        questions: Array.isArray(quiz.questions) ? quiz.questions : [],
+        createdAt: quiz.createdAt || new Date().toISOString(),
+        updatedAt: quiz.createdAt || new Date().toISOString(),
+      };
+    }
+  }
+
+  // Fallback to legacy papers.json
+  const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
+  if (Array.isArray(legacy)) {
+    const found = legacy.find(
+      (p) =>
+        (Boolean(pid) && p.id === pid) ||
+        (Boolean(code) && p.testCode && p.testCode.toUpperCase() === code)
+    );
+    if (found) return found;
+  }
+
+  return null;
+};
+
+export const getAllServerPapers = async (userIdFilter?: string): Promise<Paper[]> => {
+  const cleanFilter = userIdFilter ? normalizeUserId(userIdFilter) : "";
   const idx = await kvGetJson<PaperMetaRecord[]>(PAPER_INDEX_KEY, []);
-  const indexedList = Array.isArray(idx) ? idx : [];
+  const indexedList = Array.isArray(idx)
+    ? cleanFilter
+      ? idx.filter((m) => normalizeUserId(m.userId || m.creatorPhone || "") === cleanFilter)
+      : idx
+    : [];
 
   const loaded: Paper[] = [];
   if (indexedList.length > 0) {
-    for (let i = 0; i < indexedList.length; i += 10) {
-      const batch = indexedList.slice(i, i + 10);
-      const items = await Promise.all(
-        batch.map((m) => kvGetJson<Paper | null>(paperItemKey(m.id), null))
-      );
-      for (const item of items) {
-        if (item && item.id) loaded.push(item);
-      }
+    const keys = indexedList.map((m) => paperItemKey(m.id));
+    const batchMap = await kvGetJsonBatch<Paper>(keys);
+    for (const k of keys) {
+      const item = batchMap.get(k);
+      if (item && item.id) loaded.push(item);
     }
   }
 
   // Merge any papers from legacy monolithic papers.json if not yet indexed per-row
-  const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
-  if (Array.isArray(legacy) && legacy.length > 0) {
-    const existingIds = new Set(loaded.map((p) => p.id));
-    const missing = legacy.filter((p) => p && p.id && !existingIds.has(p.id));
-    if (missing.length > 0) {
-      loaded.push(...missing);
-      // Lazily migrate missing legacy items to per-paper atomic rows
-      Promise.all(
-        missing.map((p) => kvSetJson(paperItemKey(p.id), p).catch(() => {}))
-      ).catch(() => {});
+  if (!cleanFilter || loaded.length === 0) {
+    const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
+    if (Array.isArray(legacy) && legacy.length > 0) {
+      const existingIds = new Set(loaded.map((p) => p.id));
+      const missing = legacy.filter(
+        (p) =>
+          p &&
+          p.id &&
+          !existingIds.has(p.id) &&
+          (!cleanFilter || normalizeUserId(p.userId || p.creatorPhone || "") === cleanFilter)
+      );
+      if (missing.length > 0) {
+        loaded.push(...missing);
+        Promise.all(
+          missing.map((p) => kvSetJson(paperItemKey(p.id), p).catch(() => {}))
+        ).catch(() => {});
+      }
     }
   }
 
@@ -975,29 +1093,42 @@ const normalizeServerPaper = (paper: Paper): Paper => {
 
 export const saveServerPapersBatch = async (
   papers: Paper[],
-  options: { alsoSyncQuizzes?: boolean } = {}
+  options: { alsoSyncQuizzes?: boolean; allowEmptyQuestions?: boolean } = {}
 ): Promise<Paper[]> => {
   const valid = (Array.isArray(papers) ? papers : [])
-    .filter((p) => p && p.id)
+    .filter((p) => p && p.id && !p.isSummaryOnly)
     .map(normalizeServerPaper);
   if (valid.length === 0) return [];
 
-  // 1. Write each paper to its own independent atomic row (zero giant-blob rewrites!)
+  // 1. Write each paper to its own independent atomic row (with anti-loss question guard)
+  const finalSaved: Paper[] = [];
   for (let i = 0; i < valid.length; i += 5) {
     await Promise.all(
       valid.slice(i, i + 5).map(async (incoming) => {
         const key = paperItemKey(incoming.id);
         const existing = await kvGetJson<Paper | null>(key, null);
+        let toStore = incoming;
         if (existing) {
           const existingUpdated = new Date(existing.updatedAt || 0).getTime();
           const incomingUpdated = new Date(incoming.updatedAt || 0).getTime();
           const existingCount = existing.questions?.length || 0;
           const incomingCount = incoming.questions?.length || 0;
-          if (incomingUpdated < existingUpdated && incomingCount <= existingCount) {
+
+          // Never accidentally lose questions if an incoming payload arrives empty without explicit permission
+          if (incomingCount === 0 && existingCount > 0 && !options.allowEmptyQuestions) {
+            toStore = {
+              ...incoming,
+              questions: existing.questions,
+              questionCount: existingCount,
+              targetQuestions: existing.targetQuestions || existingCount,
+            };
+          } else if (incomingUpdated < existingUpdated && incomingCount <= existingCount) {
+            finalSaved.push(existing);
             return;
           }
         }
-        await kvSetJson(key, incoming);
+        await kvSetJson(key, toStore);
+        finalSaved.push(toStore);
       })
     );
   }
@@ -1021,7 +1152,7 @@ export const saveServerPapersBatch = async (
         }
       }
 
-      for (const normalized of valid) {
+      for (const normalized of finalSaved) {
         const meta = toPaperMeta(normalized);
         const pos = list.findIndex(
           (m) =>
@@ -1048,7 +1179,7 @@ export const saveServerPapersBatch = async (
   });
 
   if (options.alsoSyncQuizzes) {
-    const withQuiz = valid.filter((p) => p.testCode && (p.questions?.length || 0) > 0);
+    const withQuiz = finalSaved.filter((p) => p.testCode && (p.questions?.length || 0) > 0);
     if (withQuiz.length > 0) {
       await withDistributedLock("quizzes_write", 8000, async () => {
         await withKeyLock(QUIZZES_KEY, async () => {
@@ -1094,7 +1225,7 @@ export const saveServerPapersBatch = async (
   // Upsert unique authors cleanly
   const seenAuthors = new Set<string>();
   const now = new Date().toISOString();
-  for (const p of valid) {
+  for (const p of finalSaved) {
     const uid = normalizeUserId(p.userId || p.creatorPhone || "");
     if (!uid || uid === "server" || seenAuthors.has(uid)) continue;
     seenAuthors.add(uid);
@@ -1107,15 +1238,18 @@ export const saveServerPapersBatch = async (
     }).catch(() => {});
   }
 
-  return valid;
+  return finalSaved;
 };
 
-export const saveServerPaper = async (paper: Paper): Promise<Paper> => {
+export const saveServerPaper = async (
+  paper: Paper,
+  options: { alsoSyncQuizzes?: boolean; allowEmptyQuestions?: boolean } = {}
+): Promise<Paper> => {
   if (!paper || !paper.id) {
     throw new Error("Invalid paper");
   }
-  const [saved] = await saveServerPapersBatch([paper]);
-  return saved;
+  const [saved] = await saveServerPapersBatch([paper], options);
+  return saved || paper;
 };
 
 export const deleteServerPaperRecord = async (

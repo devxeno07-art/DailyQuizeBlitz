@@ -45,6 +45,8 @@ export interface Paper {
   category: string; // GSRTC, GPSC, Police, General, etc.
   description?: string;
   targetQuestions?: number;
+  questionCount?: number;
+  isSummaryOnly?: boolean;
   timeLimitMinutes?: number;
   isPublic?: boolean;
   testCode?: string; // Persistent unique code like "GSRTC-4821" to run this specific test in Telegram groups

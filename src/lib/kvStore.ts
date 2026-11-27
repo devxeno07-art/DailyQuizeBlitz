@@ -412,6 +412,69 @@ export const kvGetJson = async <T>(key: string, fallback: T): Promise<T> => {
   }
 };
 
+/**
+ * Batch-read multiple JSON keys in minimal PostgREST `in.(...)` requests.
+ * Transparently resolves any chunked keys.
+ */
+export const kvGetJsonBatch = async <T>(keys: string[]): Promise<Map<string, T>> => {
+  const result = new Map<string, T>();
+  if (!Array.isArray(keys) || keys.length === 0) return result;
+
+  if (!HAS_SUPABASE) {
+    const items = await Promise.all(keys.map((k) => kvGetJson<T | null>(k, null)));
+    keys.forEach((k, i) => {
+      if (items[i] !== null) result.set(k, items[i] as T);
+    });
+    return result;
+  }
+
+  const base = SUPABASE_URL.replace(/\/$/, "");
+  const fullKeyToOrig = new Map(keys.map((k) => [sbKeyName(k), k]));
+  const allFullKeys = Array.from(fullKeyToOrig.keys());
+  const chunkedKeys: string[] = [];
+
+  for (let i = 0; i < allFullKeys.length; i += 15) {
+    const batch = allFullKeys.slice(i, i + 15);
+    const inList = batch.map((k) => `"${encodeURIComponent(k)}"`).join(",");
+    try {
+      const res = await fetch(
+        `${base}/rest/v1/app_settings?key=in.(${inList})&select=key,value`,
+        {
+          headers: supabaseHeaders(),
+          cache: "no-store",
+          signal: AbortSignal.timeout(12000),
+        }
+      );
+      if (!res.ok) continue;
+      const rows = (await res.json()) as Array<{ key: string; value?: string }>;
+      for (const row of rows) {
+        const origKey = fullKeyToOrig.get(row.key);
+        if (!origKey || !row.value) continue;
+        if (row.value.startsWith('{"__chunked":true')) {
+          chunkedKeys.push(origKey);
+          continue;
+        }
+        try {
+          result.set(origKey, JSON.parse(row.value) as T);
+        } catch {}
+      }
+    } catch (err) {
+      console.warn("[storage] kvGetJsonBatch failed:", err);
+    }
+  }
+
+  if (chunkedKeys.length > 0) {
+    const resolved = await Promise.all(
+      chunkedKeys.map((k) => kvGetJson<T | null>(k, null))
+    );
+    chunkedKeys.forEach((k, idx) => {
+      if (resolved[idx] !== null) result.set(k, resolved[idx] as T);
+    });
+  }
+
+  return result;
+};
+
 /** Serialize and persist a JSON document. */
 export const kvSetJson = async <T>(key: string, value: T): Promise<void> => {
   const raw = JSON.stringify(value);

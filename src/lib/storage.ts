@@ -427,6 +427,16 @@ export const mergePapersList = (
     const existingQ = existing.questions?.length || 0;
     const incomingQ = p.questions?.length || 0;
 
+    // Never drop full questions when merging with a summary-only record
+    if (p.isSummaryOnly && existingQ > 0) {
+      map.set(existing.id, {
+        ...existing,
+        questionCount: p.questionCount || existingQ,
+        isSummaryOnly: false,
+      });
+      return;
+    }
+
     if (
       incomingUpdated > existingUpdated ||
       (incomingUpdated === existingUpdated && incomingQ > existingQ) ||
@@ -436,6 +446,9 @@ export const mergePapersList = (
         ...existing,
         ...p,
         id: existing.id,
+        questions: incomingQ > 0 ? p.questions : existing.questions,
+        questionCount: incomingQ || p.questionCount || existingQ || existing.questionCount || 0,
+        isSummaryOnly: incomingQ > 0 ? false : Boolean(p.isSummaryOnly && existingQ === 0),
         userId: p.userId || existing.userId,
         userName: p.userName || existing.userName,
       });
@@ -761,18 +774,30 @@ export const loginOrRegister = async (phoneNumber: string, name: string): Promis
 };
 
 // Save a Paper with real-time sync & auto-link Telegram test code
-export const savePaper = async (paper: Paper): Promise<void> => {
+export const savePaper = async (
+  paper: Paper,
+  options: { allowEmptyQuestions?: boolean } = {}
+): Promise<void> => {
+  if (paper.isSummaryOnly) {
+    console.warn("Skipped saving summary-only paper payload to protect questions.");
+    return;
+  }
+
   const now = new Date().toISOString();
   const code = paper.testCode || generateTestCode(paper.category);
   const normalizedUserId = normalizeClientUserId(paper.userId || "");
 
   const updatedPaper: Paper = {
     ...paper,
+    isSummaryOnly: false,
+    questionCount: paper.questions?.length || 0,
     userId: normalizedUserId || paper.userId,
     creatorPhone: normalizedUserId || paper.creatorPhone,
     testCode: code,
     updatedAt: now,
   };
+
+  fullPaperCache.set(updatedPaper.id, updatedPaper);
 
   const localPapers = getLocalPapers();
   const existingIdx = localPapers.findIndex(p => p.id === paper.id);
@@ -786,12 +811,16 @@ export const savePaper = async (paper: Paper): Promise<void> => {
   if (typeof window !== "undefined") {
     localStorage.removeItem(`mcq_draft_${paper.id}`);
 
-    // Sync full paper (including 0-question & >500-question papers) to server Redis store
+    // Sync full paper to server Supabase store
     try {
       await fetch("/api/papers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedPaper),
+        body: JSON.stringify(
+          options.allowEmptyQuestions
+            ? { ...updatedPaper, allowEmptyQuestions: true }
+            : updatedPaper
+        ),
       });
     } catch (e) {
       console.warn("Could not sync full paper to server:", e);
@@ -884,6 +913,76 @@ export const deletePaper = async (paperId: string, testCode?: string): Promise<v
   }
 };
 
+const fullPaperCache = new Map<string, Paper>();
+
+export const fetchFullPaper = async (paper: Paper): Promise<Paper> => {
+  if (!paper) return paper;
+  if (!paper.isSummaryOnly && Array.isArray(paper.questions) && paper.questions.length > 0) {
+    fullPaperCache.set(paper.id, paper);
+    return paper;
+  }
+
+  const cached = fullPaperCache.get(paper.id);
+  if (cached && cached.questions && cached.questions.length > 0) {
+    return cached;
+  }
+
+  if (typeof window === "undefined") return paper;
+
+  // Check localStorage first
+  const localMatch = getLocalPapers().find(
+    (p) => p.id === paper.id && !p.isSummaryOnly && (p.questions?.length || 0) > 0
+  );
+  if (localMatch) {
+    fullPaperCache.set(paper.id, localMatch);
+    return localMatch;
+  }
+
+  try {
+    const params = new URLSearchParams();
+    if (paper.id) params.set("paperId", paper.id);
+    if (paper.testCode) params.set("code", paper.testCode);
+    const res = await fetch(`/api/papers?${params.toString()}`, {
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data?.ok && data.paper) {
+        const full: Paper = {
+          ...data.paper,
+          isSummaryOnly: false,
+          questionCount: data.paper.questions?.length || 0,
+        };
+        fullPaperCache.set(full.id, full);
+        return full;
+      }
+    }
+  } catch (e) {
+    console.warn("Could not fetch full paper:", e);
+  }
+
+  return paper;
+};
+
+export const fetchCommunityPapersSummary = async (
+  userIdFilter?: string
+): Promise<Paper[]> => {
+  if (typeof window === "undefined") return [];
+  try {
+    const params = new URLSearchParams({ summary: "1" });
+    if (userIdFilter) params.set("userId", userIdFilter);
+    const res = await fetch(`/api/papers?${params.toString()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => null);
+    return data?.ok && Array.isArray(data.papers) ? data.papers : [];
+  } catch (e) {
+    console.warn("Could not fetch community paper summaries:", e);
+    return [];
+  }
+};
+
 export const fetchCommunityPapers = async (userIdFilter?: string): Promise<Paper[]> => {
   if (typeof window === "undefined") return [];
   const collected: Paper[] = [];
@@ -930,11 +1029,11 @@ export const subscribeUserPapers = (
 
   notify();
 
-  // Fetch user's papers from server store across all pages so switching browsers
-  // or refreshing always restores all papers & questions seamlessly.
+  // Fetch user's paper summaries fast (<150ms) so switching browsers or refreshing
+  // always restores all user papers immediately without timing out.
   let cancelled = false;
   if (typeof window !== "undefined" && cleanUserId) {
-    fetchCommunityPapers(cleanUserId)
+    fetchCommunityPapersSummary(cleanUserId)
       .then((serverMine) => {
         if (cancelled || serverMine.length === 0) return;
         const currentLocal = getLocalPapers();
@@ -1016,7 +1115,7 @@ export const subscribeAllPapers = (callback: (papers: Paper[]) => void): (() => 
 
   let cancelled = false;
   if (typeof window !== "undefined") {
-    fetchCommunityPapers()
+    fetchCommunityPapersSummary()
       .then((serverPapers) => {
         if (cancelled || serverPapers.length === 0) return;
         const merged = mergePapersList(getLocalPapers(), serverPapers);

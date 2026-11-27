@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Paper, Question } from "@/types";
 import { useAuth } from "@/context/AuthContext";
-import { fetchCommunityPapers } from "@/lib/storage";
+import { fetchCommunityPapersSummary, fetchFullPaper } from "@/lib/storage";
 import {
   X,
   Shuffle,
@@ -45,12 +45,13 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
   const [questionCount, setQuestionCount] = useState<number>(25);
   const [shuffleQuestions, setShuffleQuestions] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
+  const [buildingMix, setBuildingMix] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
     setLoading(true);
-    fetchCommunityPapers()
+    fetchCommunityPapersSummary()
       .then((list) => {
         if (active) setCommunityPapers(list);
       })
@@ -63,6 +64,9 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
     };
   }, [isOpen]);
 
+  const getQCount = (p: Paper): number =>
+    p.questions?.length || p.questionCount || 0;
+
   // Combine user papers + community papers without duplicate test codes/ids
   const uniquePapers = useMemo(() => {
     const map = new Map<string, Paper>();
@@ -72,11 +76,12 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
     });
     papers.forEach((mp) => {
       const key = (mp.testCode || mp.id).toUpperCase();
-      map.set(key, mp);
+      const prev = map.get(key);
+      if (!prev || getQCount(mp) >= getQCount(prev)) {
+        map.set(key, mp);
+      }
     });
-    return Array.from(map.values()).filter(
-      (p) => Array.isArray(p.questions) && p.questions.length > 0
-    );
+    return Array.from(map.values()).filter((p) => getQCount(p) > 0);
   }, [papers, communityPapers]);
 
   const subjectStats = useMemo(() => {
@@ -84,73 +89,89 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
     uniquePapers.forEach((paper) => {
       const subj = getPaperSubject(paper);
       const existing = counts.get(subj) || { subject: subj, questionCount: 0, paperCount: 0 };
-      existing.questionCount += paper.questions?.length || 0;
+      existing.questionCount += getQCount(paper);
       existing.paperCount += 1;
       counts.set(subj, existing);
     });
     return Array.from(counts.values()).sort((a, b) => b.questionCount - a.questionCount);
   }, [uniquePapers]);
 
-  const poolQuestions = useMemo(() => {
+  const relevantPapers = useMemo(() => {
     const activeSet = new Set(selectedSubjects.map((s) => s.toLowerCase()));
-    const relevant =
-      selectedSubjects.length === 0
-        ? uniquePapers
-        : uniquePapers.filter((p) => activeSet.has(getPaperSubject(p).toLowerCase()));
-
-    const seenText = new Set<string>();
-    const deduped: Question[] = [];
-    relevant.forEach((paper) => {
-      (paper.questions || []).forEach((q) => {
-        const key = String(q.questionText || "")
-          .toLowerCase()
-          .replace(/\s+/g, " ")
-          .trim();
-        if (!key || seenText.has(key)) return;
-        seenText.add(key);
-        deduped.push(q);
-      });
-    });
-    return deduped;
+    return selectedSubjects.length === 0
+      ? uniquePapers
+      : uniquePapers.filter((p) => activeSet.has(getPaperSubject(p).toLowerCase()));
   }, [uniquePapers, selectedSubjects]);
+
+  const totalPoolCount = useMemo(
+    () => relevantPapers.reduce((sum, p) => sum + getQCount(p), 0),
+    [relevantPapers]
+  );
 
   if (!isOpen) return null;
 
-  const effectiveCount = Math.max(1, Math.min(questionCount || 25, poolQuestions.length || 1));
+  const effectiveCount = Math.max(1, Math.min(questionCount || 25, totalPoolCount || 1));
 
-  const buildVirtualMixPaper = (): Paper | null => {
-    if (poolQuestions.length === 0) return null;
-    const ordered = shuffleQuestions ? shuffleArray(poolQuestions) : [...poolQuestions];
-    const picked = ordered.slice(0, effectiveCount).map((q, idx) => ({
-      ...q,
-      questionNumber: idx + 1,
-    }));
+  const buildVirtualMixPaper = async (): Promise<Paper | null> => {
+    if (relevantPapers.length === 0) return null;
+    setBuildingMix(true);
+    try {
+      // Load full questions on demand only for the selected subjects' papers
+      const fullPapers = await Promise.all(
+        relevantPapers.map((p) => fetchFullPaper(p))
+      );
 
-    const subjLabel =
-      selectedSubjects.length === 0
-        ? "બધા વિષયો મિક્સ"
-        : selectedSubjects.slice(0, 3).join(", ") +
-          (selectedSubjects.length > 3 ? ` +${selectedSubjects.length - 3}` : "");
+      const seenText = new Set<string>();
+      const deduped: Question[] = [];
+      fullPapers.forEach((paper) => {
+        (paper.questions || []).forEach((q) => {
+          const key = String(q.questionText || "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+          if (!key || seenText.has(key)) return;
+          seenText.add(key);
+          deduped.push(q);
+        });
+      });
 
-    const randomCode = `MIX-${Math.floor(1000 + Math.random() * 9000)}`;
-    const now = new Date().toISOString();
+      if (deduped.length === 0) return null;
+      const ordered = shuffleQuestions ? shuffleArray(deduped) : [...deduped];
+      const countToPick = Math.min(effectiveCount, ordered.length);
+      const picked = ordered.slice(0, countToPick).map((q, idx) => ({
+        ...q,
+        questionNumber: idx + 1,
+      }));
 
-    return {
-      id: `mix_${Date.now()}`,
-      testCode: randomCode,
-      userId: user?.id || "guest",
-      userName: user?.name || "વિદ્યાર્થી",
-      title:
+      const subjLabel =
         selectedSubjects.length === 0
-          ? `મેગા મિક્સ મોક ટેસ્ટ (${picked.length} MCQs)`
-          : `કસ્ટમ મિક્સ ટેસ્ટ: ${subjLabel}`,
-      subject: subjLabel,
-      category: "મિક્સ મોક ટેસ્ટ",
-      timeLimitMinutes: Math.max(5, Math.ceil((picked.length * 30) / 60)),
-      questions: picked,
-      createdAt: now,
-      updatedAt: now,
-    };
+          ? "બધા વિષયો મિક્સ"
+          : selectedSubjects.slice(0, 3).join(", ") +
+            (selectedSubjects.length > 3 ? ` +${selectedSubjects.length - 3}` : "");
+
+      const randomCode = `MIX-${Math.floor(1000 + Math.random() * 9000)}`;
+      const now = new Date().toISOString();
+
+      return {
+        id: `mix_${Date.now()}`,
+        testCode: randomCode,
+        userId: user?.id || "guest",
+        userName: user?.name || "વિદ્યાર્થી",
+        title:
+          selectedSubjects.length === 0
+            ? `મેગા મિક્સ મોક ટેસ્ટ (${picked.length} MCQs)`
+            : `કસ્ટમ મિક્સ ટેસ્ટ: ${subjLabel}`,
+        subject: subjLabel,
+        category: "મિક્સ મોક ટેસ્ટ",
+        questionCount: picked.length,
+        timeLimitMinutes: Math.max(5, Math.ceil((picked.length * 30) / 60)),
+        questions: picked,
+        createdAt: now,
+        updatedAt: now,
+      };
+    } finally {
+      setBuildingMix(false);
+    }
   };
 
   const toggleSubject = (subj: string) => {
@@ -199,8 +220,8 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
                 </h4>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   {selectedSubjects.length === 0
-                    ? `કોઈ વિષય પસંદ ન હોય તો બધા જ વિષયો મિક્સ થશે (${poolQuestions.length} પ્રશ્નો)`
-                    : `${selectedSubjects.length} વિષય પસંદ કર્યા • કુલ પૂલ: ${poolQuestions.length} અનન્ય MCQs`}
+                    ? `કોઈ વિષય પસંદ ન હોય તો બધા જ વિષયો મિક્સ થશે (${totalPoolCount} પ્રશ્નો)`
+                    : `${selectedSubjects.length} વિષય પસંદ કર્યા • કુલ પૂલ: ${totalPoolCount} MCQs`}
                 </p>
               </div>
 
@@ -281,7 +302,7 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
                 <span>૨. કેટલા પ્રશ્નોની ટેસ્ટ બનાવવી છે?</span>
               </h4>
               <span className="text-[11px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-                પસંદ: {poolQuestions.length === 0 ? 0 : effectiveCount} / {poolQuestions.length}
+                પસંદ: {totalPoolCount === 0 ? 0 : effectiveCount} / {totalPoolCount}
               </span>
             </div>
 
@@ -335,9 +356,9 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
         <div className="px-4 sm:px-5 py-3 bg-white border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             type="button"
-            disabled={poolQuestions.length === 0}
-            onClick={() => {
-              const mixed = buildVirtualMixPaper();
+            disabled={totalPoolCount === 0 || buildingMix}
+            onClick={async () => {
+              const mixed = await buildVirtualMixPaper();
               if (!mixed) return;
               onClose();
               onStartOnlineTest(mixed);
@@ -345,14 +366,14 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
             className="h-10 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-sm transition-all"
           >
             <Play className="w-4 h-4 fill-current shrink-0" />
-            <span>વેબ પર ટેસ્ટ આપો ({poolQuestions.length === 0 ? 0 : effectiveCount} Qs)</span>
+            <span>{buildingMix ? "તૈયાર થઈ રહ્યું છે..." : `વેબ પર ટેસ્ટ આપો (${totalPoolCount === 0 ? 0 : effectiveCount} Qs)`}</span>
           </button>
 
           <button
             type="button"
-            disabled={poolQuestions.length === 0}
-            onClick={() => {
-              const mixed = buildVirtualMixPaper();
+            disabled={totalPoolCount === 0 || buildingMix}
+            onClick={async () => {
+              const mixed = await buildVirtualMixPaper();
               if (!mixed) return;
               onClose();
               onOpenTelegramQuiz(mixed);
@@ -360,7 +381,7 @@ export const MixTestModal: React.FC<MixTestModalProps> = ({
             className="h-10 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-sm transition-all"
           >
             <Bot className="w-4 h-4 shrink-0" />
-            <span>ટેલિગ્રામ ક્વિઝ કોડ બનાવો</span>
+            <span>{buildingMix ? "તૈયાર થઈ રહ્યું છે..." : "ટેલિગ્રામ ક્વિઝ કોડ બનાવો"}</span>
           </button>
         </div>
       </div>
