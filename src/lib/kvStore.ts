@@ -94,8 +94,8 @@ const warnIfEphemeral = (): void => {
 const SB_CHUNK_SIZE = 500_000; // ~500KB per row keeps Supabase PostgREST fast & reliable even at 50+ huge exams
 
 const sbKeyName = (key: string): string => `kv:${KEY_PREFIX}${key}`;
-const sbChunkName = (key: string, idx: number): string =>
-  `${sbKeyName(key)}::chunk:${idx}`;
+const sbChunkName = (key: string, idx: number, version?: string): string =>
+  version ? `${sbKeyName(key)}::chunk:${version}:${idx}` : `${sbKeyName(key)}::chunk:${idx}`;
 
 const supabaseHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
   apikey: SUPABASE_ANON_KEY,
@@ -123,14 +123,17 @@ const supabaseGet = async (key: string): Promise<string | null> => {
   const raw = Array.isArray(rows) && rows.length > 0 ? rows[0].value ?? null : null;
   if (!raw) return null;
 
-  // Transparently reassemble chunked documents
+  // Transparently reassemble versioned (or legacy unversioned) chunked documents
   if (raw.startsWith('{"__chunked":true')) {
-    try {
-      const meta = JSON.parse(raw) as { __chunked?: boolean; chunks?: number };
-      const count = Number(meta.chunks) || 0;
-      if (meta.__chunked && count > 0) {
-        const chunkKeys = Array.from({ length: count }, (_, i) => sbChunkName(key, i));
-        const inList = chunkKeys.map((k) => `"${encodeURIComponent(k)}"`).join(",");
+    const meta = JSON.parse(raw) as { __chunked?: boolean; v?: string; chunks?: number };
+    const count = Number(meta.chunks) || 0;
+    if (meta.__chunked && count > 0) {
+      const chunkKeys = Array.from({ length: count }, (_, i) => sbChunkName(key, i, meta.v));
+      const cRows: Array<{ key: string; value: string }> = [];
+      // Fetch up to 12 chunk keys per PostgREST IN query to stay well under URL length limits
+      for (let i = 0; i < chunkKeys.length; i += 12) {
+        const batchKeys = chunkKeys.slice(i, i + 12);
+        const inList = batchKeys.map((k) => `"${encodeURIComponent(k)}"`).join(",");
         const cRes = await fetch(
           `${base}/rest/v1/app_settings?key=in.(${inList})&select=key,value`,
           {
@@ -142,21 +145,20 @@ const supabaseGet = async (key: string): Promise<string | null> => {
         if (!cRes.ok) {
           throw new Error(`Supabase chunk GET failed (${cRes.status})`);
         }
-        const cRows = (await cRes.json()) as Array<{ key: string; value: string }>;
-        const byKey = new Map(cRows.map((r) => [r.key, r.value || ""]));
-        let combined = "";
-        for (const ck of chunkKeys) {
-          const part = byKey.get(ck);
-          if (part === undefined) {
-            throw new Error(`Missing chunk ${ck}`);
-          }
-          combined += part;
-        }
-        return combined;
+        const batchRows = (await cRes.json()) as Array<{ key: string; value: string }>;
+        cRows.push(...batchRows);
       }
-    } catch (err) {
-      console.warn(`[storage] Failed to reassemble chunked key ${key}:`, err);
-      return null;
+
+      const byKey = new Map(cRows.map((r) => [r.key, r.value || ""]));
+      let combined = "";
+      for (const ck of chunkKeys) {
+        const part = byKey.get(ck);
+        if (part === undefined) {
+          throw new Error(`Missing chunk ${ck}`);
+        }
+        combined += part;
+      }
+      return combined;
     }
   }
 
@@ -175,11 +177,40 @@ const supabaseUpsertBatch = async (
     }),
     body: JSON.stringify(rows),
     cache: "no-store",
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
     throw new Error(`Supabase SET failed (${res.status}): ${errText}`);
+  }
+};
+
+const cleanupOldChunks = async (target: string, currentVersion: string): Promise<void> => {
+  try {
+    const base = SUPABASE_URL.replace(/\/$/, "");
+    // List existing chunk keys for this manifest, delete ones not belonging to currentVersion
+    const res = await fetch(
+      `${base}/rest/v1/app_settings?key=like.${encodeURIComponent(`${target}::chunk:*`)}&select=key`,
+      {
+        headers: supabaseHeaders(),
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+    if (!res.ok) return;
+    const rows = (await res.json()) as Array<{ key: string }>;
+    const keepPrefix = `${target}::chunk:${currentVersion}:`;
+    const stale = rows.map((r) => r.key).filter((k) => !k.startsWith(keepPrefix));
+    if (stale.length === 0) return;
+    const inList = stale.slice(0, 40).map((k) => `"${encodeURIComponent(k)}"`).join(",");
+    await fetch(`${base}/rest/v1/app_settings?key=in.(${inList})`, {
+      method: "DELETE",
+      headers: supabaseHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => {});
+  } catch {
+    // Best-effort GC
   }
 };
 
@@ -192,32 +223,34 @@ const supabaseSet = async (key: string, value: string): Promise<void> => {
     return;
   }
 
-  // Split large payloads (>500KB) into chunks so Supabase stays fast for 50–200+ exams
+  // Write to a fresh immutable version prefix FIRST, then atomically swap the manifest.
+  // Eliminates all torn reads during concurrent requests.
+  const version = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
   const totalChunks = Math.ceil(value.length / SB_CHUNK_SIZE);
   const chunkRows: Array<{ key: string; value: string; updated_at: string }> = [];
   for (let i = 0; i < totalChunks; i++) {
     chunkRows.push({
-      key: sbChunkName(key, i),
+      key: sbChunkName(key, i, version),
       value: value.slice(i * SB_CHUNK_SIZE, (i + 1) * SB_CHUNK_SIZE),
       updated_at: now,
     });
   }
 
-  // Upsert chunks individually (3 concurrent) so each PostgREST body stays <= 500KB
   for (let i = 0; i < chunkRows.length; i += 3) {
     await Promise.all(
       chunkRows.slice(i, i + 3).map((row) => supabaseUpsertBatch([row]))
     );
   }
 
-  // Commit manifest pointing to the newly written chunks
   await supabaseUpsertBatch([
     {
       key: target,
-      value: JSON.stringify({ __chunked: true, chunks: totalChunks }),
+      value: JSON.stringify({ __chunked: true, v: version, chunks: totalChunks }),
       updated_at: now,
     },
   ]);
+
+  cleanupOldChunks(target, version).catch(() => {});
 };
 
 const supabaseDelete = async (key: string): Promise<void> => {
@@ -324,40 +357,35 @@ const fileSet = async (key: string, value: string): Promise<void> => {
 // Unified JSON API
 // ==========================================
 
-/** Read and parse a JSON document. Returns the fallback when missing/invalid. */
-export const kvGetJson = async <T>(key: string, fallback: T): Promise<T> => {
+/**
+ * Read and parse a JSON document.
+ * When `strict = true`, throws on cloud read/parse errors so write locks NEVER
+ * accidentally overwrite existing records with an empty fallback array.
+ */
+export const kvGetJsonStrict = async <T>(key: string, fallback: T): Promise<T> => {
   let raw: string | null = null;
+  let cloudReadSucceeded = false;
 
-  // 1. Primary: Supabase PostgreSQL KV
   if (HAS_SUPABASE) {
-    try {
-      raw = await supabaseGet(key);
-    } catch (err) {
-      console.warn(`[storage] Supabase read failed for ${key}:`, err);
-    }
+    raw = await supabaseGet(key);
+    cloudReadSucceeded = true;
   }
 
-  // 2. Fallback: Redis (only if healthy and Supabase missed/failed)
   if (raw == null && isRedisHealthy()) {
     try {
       raw = await redisGet(key);
+      cloudReadSucceeded = true;
       if (raw != null && HAS_SUPABASE) {
-        // Backfill into Supabase automatically
         supabaseSet(key, raw).catch(() => {});
       }
     } catch (err) {
-      console.warn(`[storage] Redis read failed for ${key}:`, err);
+      if (!cloudReadSucceeded) throw err;
     }
   }
 
-  // 3. Fallback: local file or bundled seed or memory
-  if (raw == null) {
+  if (raw == null && !cloudReadSucceeded) {
     warnIfEphemeral();
-    try {
-      raw = await fileGet(key);
-    } catch (err) {
-      console.warn(`[storage] File read failed for ${key}:`, err);
-    }
+    raw = await fileGet(key);
   }
 
   if (raw == null) {
@@ -365,10 +393,21 @@ export const kvGetJson = async <T>(key: string, fallback: T): Promise<T> => {
   }
   if (raw == null) return fallback;
 
+  return JSON.parse(raw) as T;
+};
+
+/** Read and parse a JSON document. Returns the fallback when missing/invalid. */
+export const kvGetJson = async <T>(key: string, fallback: T): Promise<T> => {
   try {
-    return JSON.parse(raw) as T;
+    return await kvGetJsonStrict(key, fallback);
   } catch (err) {
-    console.warn(`[storage] Could not parse ${key}:`, err);
+    console.warn(`[storage] kvGetJson failed for ${key}:`, err);
+    const cached = memoryStore.get(key);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as T;
+      } catch {}
+    }
     return fallback;
   }
 };

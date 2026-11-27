@@ -12,7 +12,9 @@ import {
 } from "@/types";
 import {
   getStorageMode,
+  kvDelete,
   kvGetJson,
+  kvGetJsonStrict,
   kvSetJson,
   withKeyLock,
   withDistributedLock,
@@ -147,42 +149,44 @@ export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
   const normalized = normalizeQuiz(quiz);
   const normalizedIsSubset = isSetOrScheduledQuiz(normalized);
 
-  await withKeyLock(QUIZZES_KEY, async () => {
-    const all = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
-    const list = Array.isArray(all) ? all : [];
+  await withDistributedLock("quizzes_write", 8000, async () => {
+    await withKeyLock(QUIZZES_KEY, async () => {
+      const all = await kvGetJsonStrict<TelegramQuiz[]>(QUIZZES_KEY, []);
+      const list = Array.isArray(all) ? all : [];
 
-    const idx = list.findIndex((q) => {
-      if (q.code.toUpperCase() === normalized.code.toUpperCase()) return true;
-      if (normalizedIsSubset || isSetOrScheduledQuiz(q)) return false;
-      return Boolean(
-        normalized.paperId && q.paperId && q.paperId === normalized.paperId
-      );
-    });
+      const idx = list.findIndex((q) => {
+        if (q.code.toUpperCase() === normalized.code.toUpperCase()) return true;
+        if (normalizedIsSubset || isSetOrScheduledQuiz(q)) return false;
+        return Boolean(
+          normalized.paperId && q.paperId && q.paperId === normalized.paperId
+        );
+      });
 
-    if (idx >= 0) {
-      list[idx] = normalized;
-    } else {
-      list.unshift(normalized);
-    }
-
-    const map = new Map<string, TelegramQuiz>();
-    for (const q of list) {
-      const key = getQuizDedupKey(q);
-      const existing = map.get(key);
-      if (
-        !existing ||
-        (q.questions?.length || 0) >= (existing.questions?.length || 0)
-      ) {
-        map.set(key, q);
+      if (idx >= 0) {
+        list[idx] = normalized;
+      } else {
+        list.unshift(normalized);
       }
-    }
 
-    const deduplicated = Array.from(map.values()).sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+      const map = new Map<string, TelegramQuiz>();
+      for (const q of list) {
+        const key = getQuizDedupKey(q);
+        const existing = map.get(key);
+        if (
+          !existing ||
+          (q.questions?.length || 0) >= (existing.questions?.length || 0)
+        ) {
+          map.set(key, q);
+        }
+      }
 
-    await kvSetJson(QUIZZES_KEY, deduplicated.slice(0, MAX_QUIZZES));
+      const deduplicated = Array.from(map.values()).sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      await kvSetJson(QUIZZES_KEY, deduplicated.slice(0, MAX_QUIZZES));
+    });
   });
 };
 
@@ -788,61 +792,64 @@ export const saveServerUser = async (
     throw new Error("Invalid user id");
   }
 
-  return await withKeyLock(USERS_KEY, async () => {
-    const all = await getAllServerUsers();
-    const idx = all.findIndex(
-      (u) => normalizeUserId(u.id || u.phoneNumber) === cleanId
-    );
-    const now = new Date().toISOString();
+  return await withDistributedLock("users_write", 5000, async () => {
+    return await withKeyLock(USERS_KEY, async () => {
+      const all = await kvGetJsonStrict<UserProfile[]>(USERS_KEY, []);
+      const list = Array.isArray(all) ? all : [];
+      const idx = list.findIndex(
+        (u) => normalizeUserId(u.id || u.phoneNumber) === cleanId
+      );
+      const now = new Date().toISOString();
 
-    if (idx >= 0) {
-      const existing = all[idx];
-      const merged: UserProfile = {
-        ...existing,
-        ...incoming,
+      if (idx >= 0) {
+        const existing = list[idx];
+        const merged: UserProfile = {
+          ...existing,
+          ...incoming,
+          id: cleanId,
+          phoneNumber: cleanId,
+          name:
+            String(incoming.name || "").trim() || existing.name || "વિદ્યાર્થી",
+          createdAt: existing.createdAt || incoming.createdAt || now,
+          lastActive:
+            incoming.lastActive &&
+            (!existing.lastActive ||
+              new Date(incoming.lastActive).getTime() >=
+                new Date(existing.lastActive).getTime())
+              ? incoming.lastActive
+              : existing.lastActive || now,
+          hasLibraryAccess:
+            existing.hasLibraryAccess !== undefined
+              ? Boolean(existing.hasLibraryAccess)
+              : Boolean(incoming.hasLibraryAccess),
+          papersCount: Math.max(
+            Number(existing.papersCount || 0),
+            Number(incoming.papersCount || 0)
+          ),
+          questionsCount: Math.max(
+            Number(existing.questionsCount || 0),
+            Number(incoming.questionsCount || 0)
+          ),
+        };
+        list[idx] = merged;
+        await kvSetJson(USERS_KEY, list.slice(0, MAX_USERS));
+        return merged;
+      }
+
+      const created: UserProfile = {
         id: cleanId,
         phoneNumber: cleanId,
-        name:
-          String(incoming.name || "").trim() || existing.name || "વિદ્યાર્થી",
-        createdAt: existing.createdAt || incoming.createdAt || now,
-        lastActive:
-          incoming.lastActive &&
-          (!existing.lastActive ||
-            new Date(incoming.lastActive).getTime() >=
-              new Date(existing.lastActive).getTime())
-            ? incoming.lastActive
-            : existing.lastActive || now,
-        hasLibraryAccess:
-          existing.hasLibraryAccess !== undefined
-            ? Boolean(existing.hasLibraryAccess)
-            : Boolean(incoming.hasLibraryAccess),
-        papersCount: Math.max(
-          Number(existing.papersCount || 0),
-          Number(incoming.papersCount || 0)
-        ),
-        questionsCount: Math.max(
-          Number(existing.questionsCount || 0),
-          Number(incoming.questionsCount || 0)
-        ),
+        name: String(incoming.name || "").trim() || "વિદ્યાર્થી",
+        createdAt: incoming.createdAt || now,
+        lastActive: incoming.lastActive || now,
+        hasLibraryAccess: Boolean(incoming.hasLibraryAccess),
+        papersCount: Number(incoming.papersCount || 0),
+        questionsCount: Number(incoming.questionsCount || 0),
       };
-      all[idx] = merged;
-      await kvSetJson(USERS_KEY, all.slice(0, MAX_USERS));
-      return merged;
-    }
-
-    const created: UserProfile = {
-      id: cleanId,
-      phoneNumber: cleanId,
-      name: String(incoming.name || "").trim() || "વિદ્યાર્થી",
-      createdAt: incoming.createdAt || now,
-      lastActive: incoming.lastActive || now,
-      hasLibraryAccess: Boolean(incoming.hasLibraryAccess),
-      papersCount: Number(incoming.papersCount || 0),
-      questionsCount: Number(incoming.questionsCount || 0),
-    };
-    all.unshift(created);
-    await kvSetJson(USERS_KEY, all.slice(0, MAX_USERS));
-    return created;
+      list.unshift(created);
+      await kvSetJson(USERS_KEY, list.slice(0, MAX_USERS));
+      return created;
+    });
   });
 };
 
@@ -869,9 +876,71 @@ export const toggleServerUserLibraryAccess = async (
   });
 };
 
+export interface PaperMetaRecord {
+  id: string;
+  userId: string;
+  testCode?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  questionCount: number;
+}
+
+const PAPER_INDEX_KEY = "paper_index.json";
+const paperItemKey = (id: string): string =>
+  `paper_${String(id || "").replace(/[^a-zA-Z0-9._-]/g, "_")}.json`;
+
+const toPaperMeta = (p: Paper): PaperMetaRecord => ({
+  id: p.id,
+  userId: normalizeUserId(p.userId || p.creatorPhone || ""),
+  testCode: p.testCode ? String(p.testCode).trim().toUpperCase() : undefined,
+  updatedAt: p.updatedAt,
+  createdAt: p.createdAt,
+  questionCount: p.questions?.length || 0,
+});
+
+export const getServerPapersMeta = async (): Promise<PaperMetaRecord[]> => {
+  const idx = await kvGetJson<PaperMetaRecord[]>(PAPER_INDEX_KEY, []);
+  if (Array.isArray(idx) && idx.length > 0) return idx;
+  const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
+  return Array.isArray(legacy) ? legacy.map(toPaperMeta) : [];
+};
+
 export const getAllServerPapers = async (): Promise<Paper[]> => {
-  const papers = await kvGetJson<Paper[]>(PAPERS_KEY, []);
-  return Array.isArray(papers) ? papers : [];
+  const idx = await kvGetJson<PaperMetaRecord[]>(PAPER_INDEX_KEY, []);
+  const indexedList = Array.isArray(idx) ? idx : [];
+
+  const loaded: Paper[] = [];
+  if (indexedList.length > 0) {
+    for (let i = 0; i < indexedList.length; i += 10) {
+      const batch = indexedList.slice(i, i + 10);
+      const items = await Promise.all(
+        batch.map((m) => kvGetJson<Paper | null>(paperItemKey(m.id), null))
+      );
+      for (const item of items) {
+        if (item && item.id) loaded.push(item);
+      }
+    }
+  }
+
+  // Merge any papers from legacy monolithic papers.json if not yet indexed per-row
+  const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
+  if (Array.isArray(legacy) && legacy.length > 0) {
+    const existingIds = new Set(loaded.map((p) => p.id));
+    const missing = legacy.filter((p) => p && p.id && !existingIds.has(p.id));
+    if (missing.length > 0) {
+      loaded.push(...missing);
+      // Lazily migrate missing legacy items to per-paper atomic rows
+      Promise.all(
+        missing.map((p) => kvSetJson(paperItemKey(p.id), p).catch(() => {}))
+      ).catch(() => {});
+    }
+  }
+
+  return loaded.sort(
+    (a, b) =>
+      new Date(b.updatedAt || b.createdAt).getTime() -
+      new Date(a.updatedAt || a.createdAt).getTime()
+  );
 };
 
 const normalizeServerPaper = (paper: Paper): Paper => {
@@ -913,83 +982,116 @@ export const saveServerPapersBatch = async (
     .map(normalizeServerPaper);
   if (valid.length === 0) return [];
 
-  await withKeyLock(PAPERS_KEY, async () => {
-    const all = await getAllServerPapers();
-    for (const normalized of valid) {
-      const idx = all.findIndex(
-        (p) =>
-          p.id === normalized.id ||
-          (normalized.testCode &&
-            p.testCode &&
-            p.testCode.toUpperCase() === normalized.testCode.toUpperCase() &&
-            normalizeUserId(p.userId) === normalizeUserId(normalized.userId))
-      );
-
-      if (idx >= 0) {
-        const existing = all[idx];
-        const existingUpdated = new Date(existing.updatedAt || 0).getTime();
-        const incomingUpdated = new Date(normalized.updatedAt || 0).getTime();
-        const existingCount = existing.questions?.length || 0;
-        const incomingCount = normalized.questions?.length || 0;
-        if (incomingUpdated >= existingUpdated || incomingCount >= existingCount) {
-          all[idx] = normalized;
+  // 1. Write each paper to its own independent atomic row (zero giant-blob rewrites!)
+  for (let i = 0; i < valid.length; i += 5) {
+    await Promise.all(
+      valid.slice(i, i + 5).map(async (incoming) => {
+        const key = paperItemKey(incoming.id);
+        const existing = await kvGetJson<Paper | null>(key, null);
+        if (existing) {
+          const existingUpdated = new Date(existing.updatedAt || 0).getTime();
+          const incomingUpdated = new Date(incoming.updatedAt || 0).getTime();
+          const existingCount = existing.questions?.length || 0;
+          const incomingCount = incoming.questions?.length || 0;
+          if (incomingUpdated < existingUpdated && incomingCount <= existingCount) {
+            return;
+          }
         }
-      } else {
-        all.unshift(normalized);
-      }
-    }
-
-    all.sort(
-      (a, b) =>
-        new Date(b.updatedAt || b.createdAt).getTime() -
-        new Date(a.updatedAt || a.createdAt).getTime()
+        await kvSetJson(key, incoming);
+      })
     );
-    await kvSetJson(PAPERS_KEY, all.slice(0, MAX_PAPERS));
+  }
+
+  // 2. Update lightweight index (< 20KB) under distributed lock + strict read
+  await withDistributedLock("paper_index_write", 8000, async () => {
+    await withKeyLock(PAPER_INDEX_KEY, async () => {
+      const currentIdx = await kvGetJsonStrict<PaperMetaRecord[]>(
+        PAPER_INDEX_KEY,
+        []
+      );
+      const list = Array.isArray(currentIdx) ? [...currentIdx] : [];
+
+      // Seed from legacy papers.json if index wasn't initialized yet
+      if (list.length === 0) {
+        const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
+        if (Array.isArray(legacy)) {
+          legacy.forEach((p) => {
+            if (p && p.id) list.push(toPaperMeta(p));
+          });
+        }
+      }
+
+      for (const normalized of valid) {
+        const meta = toPaperMeta(normalized);
+        const pos = list.findIndex(
+          (m) =>
+            m.id === meta.id ||
+            (meta.testCode &&
+              m.testCode &&
+              m.testCode.toUpperCase() === meta.testCode.toUpperCase() &&
+              normalizeUserId(m.userId) === normalizeUserId(meta.userId))
+        );
+        if (pos >= 0) {
+          list[pos] = { ...meta, id: list[pos].id };
+        } else {
+          list.unshift(meta);
+        }
+      }
+
+      list.sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.createdAt || 0).getTime() -
+          new Date(a.updatedAt || a.createdAt || 0).getTime()
+      );
+      await kvSetJson(PAPER_INDEX_KEY, list.slice(0, MAX_PAPERS));
+    });
   });
 
   if (options.alsoSyncQuizzes) {
     const withQuiz = valid.filter((p) => p.testCode && (p.questions?.length || 0) > 0);
     if (withQuiz.length > 0) {
-      await withKeyLock(QUIZZES_KEY, async () => {
-        const allQ = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
-        const list = Array.isArray(allQ) ? allQ : [];
-        for (const p of withQuiz) {
-          const normalized = normalizeQuiz({
-            code: p.testCode!,
-            paperId: p.id,
-            title: p.title,
-            subject: p.subject || p.category,
-            timePerQuestion: 30,
-            questions: p.questions,
-            createdBy: p.userName,
-            creatorPhone: p.userId,
-            createdAt: p.updatedAt || p.createdAt || new Date().toISOString(),
-          });
-          const idx = list.findIndex(
-            (q) =>
-              q.code.toUpperCase() === normalized.code.toUpperCase() ||
-              (!isSetOrScheduledQuiz(q) && normalized.paperId && q.paperId === normalized.paperId)
-          );
-          if (idx >= 0) list[idx] = normalized;
-          else list.unshift(normalized);
-        }
-        const map = new Map<string, TelegramQuiz>();
-        for (const q of list) {
-          const key = getQuizDedupKey(q);
-          const existing = map.get(key);
-          if (!existing || (q.questions?.length || 0) >= (existing.questions?.length || 0)) {
-            map.set(key, q);
+      await withDistributedLock("quizzes_write", 8000, async () => {
+        await withKeyLock(QUIZZES_KEY, async () => {
+          const allQ = await kvGetJsonStrict<TelegramQuiz[]>(QUIZZES_KEY, []);
+          const list = Array.isArray(allQ) ? allQ : [];
+          for (const p of withQuiz) {
+            const normalized = normalizeQuiz({
+              code: p.testCode!,
+              paperId: p.id,
+              title: p.title,
+              subject: p.subject || p.category,
+              timePerQuestion: 30,
+              questions: p.questions,
+              createdBy: p.userName,
+              creatorPhone: p.userId,
+              createdAt: p.updatedAt || p.createdAt || new Date().toISOString(),
+            });
+            const idx = list.findIndex(
+              (q) =>
+                q.code.toUpperCase() === normalized.code.toUpperCase() ||
+                (!isSetOrScheduledQuiz(q) && normalized.paperId && q.paperId === normalized.paperId)
+            );
+            if (idx >= 0) list[idx] = normalized;
+            else list.unshift(normalized);
           }
-        }
-        const deduplicated = Array.from(map.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        await kvSetJson(QUIZZES_KEY, deduplicated.slice(0, MAX_QUIZZES));
+          const map = new Map<string, TelegramQuiz>();
+          for (const q of list) {
+            const key = getQuizDedupKey(q);
+            const existing = map.get(key);
+            if (!existing || (q.questions?.length || 0) >= (existing.questions?.length || 0)) {
+              map.set(key, q);
+            }
+          }
+          const deduplicated = Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+          await kvSetJson(QUIZZES_KEY, deduplicated.slice(0, MAX_QUIZZES));
+        });
       });
     }
   }
 
-  // Upsert unique authors in one batch pass
+  // Upsert unique authors cleanly
   const seenAuthors = new Set<string>();
   const now = new Date().toISOString();
   for (const p of valid) {
@@ -1025,9 +1127,42 @@ export const deleteServerPaperRecord = async (
   if (!pid && !code) return false;
 
   let removed = false;
+
+  await withDistributedLock("paper_index_write", 6000, async () => {
+    await withKeyLock(PAPER_INDEX_KEY, async () => {
+      const idxList = await kvGetJsonStrict<PaperMetaRecord[]>(
+        PAPER_INDEX_KEY,
+        []
+      );
+      const removedIds: string[] = [];
+      const filteredIdx = idxList.filter((m) => {
+        const matchId = Boolean(pid) && m.id === pid;
+        const matchCode =
+          Boolean(code) && String(m.testCode || "").toUpperCase() === code;
+        if (matchId || matchCode) {
+          removed = true;
+          removedIds.push(m.id);
+          return false;
+        }
+        return true;
+      });
+      if (removedIds.length > 0) {
+        await kvSetJson(PAPER_INDEX_KEY, filteredIdx);
+        await Promise.all(
+          removedIds.map((id) => kvDelete(paperItemKey(id)).catch(() => {}))
+        );
+      }
+    });
+  });
+
+  if (pid) {
+    await kvDelete(paperItemKey(pid)).catch(() => {});
+  }
+
   await withKeyLock(PAPERS_KEY, async () => {
-    const all = await getAllServerPapers();
-    const filtered = all.filter((p) => {
+    const legacy = await kvGetJson<Paper[]>(PAPERS_KEY, []);
+    if (!Array.isArray(legacy) || legacy.length === 0) return;
+    const filtered = legacy.filter((p) => {
       const matchId = Boolean(pid) && p.id === pid;
       const matchCode =
         Boolean(code) && String(p.testCode || "").toUpperCase() === code;
@@ -1037,9 +1172,10 @@ export const deleteServerPaperRecord = async (
       }
       return true;
     });
-    if (removed) {
+    if (filtered.length !== legacy.length) {
       await kvSetJson(PAPERS_KEY, filtered);
     }
   });
+
   return removed;
 };

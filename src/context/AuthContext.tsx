@@ -40,7 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginOrRegister(currentUser.id || currentUser.phoneNumber, currentUser.name)
           .then((syncedUser) => {
             setUser(syncedUser);
-            return syncUserPapersToServer(syncedUser.id);
+            return syncUserPapersToServer(syncedUser.id, true);
           })
           .catch(() => {});
       }
