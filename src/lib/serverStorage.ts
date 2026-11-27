@@ -874,13 +874,10 @@ export const getAllServerPapers = async (): Promise<Paper[]> => {
   return Array.isArray(papers) ? papers : [];
 };
 
-export const saveServerPaper = async (paper: Paper): Promise<Paper> => {
-  if (!paper || !paper.id) {
-    throw new Error("Invalid paper");
-  }
+const normalizeServerPaper = (paper: Paper): Paper => {
   const cleanUserId = normalizeUserId(paper.userId || paper.creatorPhone || "");
   const now = new Date().toISOString();
-  const normalized: Paper = {
+  return {
     ...paper,
     id: String(paper.id).trim(),
     userId: cleanUserId || String(paper.userId || "").trim(),
@@ -905,30 +902,41 @@ export const saveServerPaper = async (paper: Paper): Promise<Paper> => {
     createdAt: paper.createdAt || now,
     updatedAt: paper.updatedAt || now,
   };
+};
+
+export const saveServerPapersBatch = async (
+  papers: Paper[],
+  options: { alsoSyncQuizzes?: boolean } = {}
+): Promise<Paper[]> => {
+  const valid = (Array.isArray(papers) ? papers : [])
+    .filter((p) => p && p.id)
+    .map(normalizeServerPaper);
+  if (valid.length === 0) return [];
 
   await withKeyLock(PAPERS_KEY, async () => {
     const all = await getAllServerPapers();
-    const idx = all.findIndex(
-      (p) =>
-        p.id === normalized.id ||
-        (normalized.testCode &&
-          p.testCode &&
-          p.testCode.toUpperCase() === normalized.testCode.toUpperCase() &&
-          normalizeUserId(p.userId) === normalizeUserId(normalized.userId))
-    );
+    for (const normalized of valid) {
+      const idx = all.findIndex(
+        (p) =>
+          p.id === normalized.id ||
+          (normalized.testCode &&
+            p.testCode &&
+            p.testCode.toUpperCase() === normalized.testCode.toUpperCase() &&
+            normalizeUserId(p.userId) === normalizeUserId(normalized.userId))
+      );
 
-    if (idx >= 0) {
-      const existing = all[idx];
-      const existingUpdated = new Date(existing.updatedAt || 0).getTime();
-      const incomingUpdated = new Date(normalized.updatedAt || 0).getTime();
-      const existingCount = existing.questions?.length || 0;
-      const incomingCount = normalized.questions?.length || 0;
-      // Only overwrite if incoming is newer or has questions (never lose questions accidentally)
-      if (incomingUpdated >= existingUpdated || incomingCount >= existingCount) {
-        all[idx] = normalized;
+      if (idx >= 0) {
+        const existing = all[idx];
+        const existingUpdated = new Date(existing.updatedAt || 0).getTime();
+        const incomingUpdated = new Date(normalized.updatedAt || 0).getTime();
+        const existingCount = existing.questions?.length || 0;
+        const incomingCount = normalized.questions?.length || 0;
+        if (incomingUpdated >= existingUpdated || incomingCount >= existingCount) {
+          all[idx] = normalized;
+        }
+      } else {
+        all.unshift(normalized);
       }
-    } else {
-      all.unshift(normalized);
     }
 
     all.sort(
@@ -939,18 +947,73 @@ export const saveServerPaper = async (paper: Paper): Promise<Paper> => {
     await kvSetJson(PAPERS_KEY, all.slice(0, MAX_PAPERS));
   });
 
-  // Also ensure the author exists in users.json so Admin sees every registered author
-  if (cleanUserId) {
+  if (options.alsoSyncQuizzes) {
+    const withQuiz = valid.filter((p) => p.testCode && (p.questions?.length || 0) > 0);
+    if (withQuiz.length > 0) {
+      await withKeyLock(QUIZZES_KEY, async () => {
+        const allQ = await kvGetJson<TelegramQuiz[]>(QUIZZES_KEY, []);
+        const list = Array.isArray(allQ) ? allQ : [];
+        for (const p of withQuiz) {
+          const normalized = normalizeQuiz({
+            code: p.testCode!,
+            paperId: p.id,
+            title: p.title,
+            subject: p.subject || p.category,
+            timePerQuestion: 30,
+            questions: p.questions,
+            createdBy: p.userName,
+            creatorPhone: p.userId,
+            createdAt: p.updatedAt || p.createdAt || new Date().toISOString(),
+          });
+          const idx = list.findIndex(
+            (q) =>
+              q.code.toUpperCase() === normalized.code.toUpperCase() ||
+              (!isSetOrScheduledQuiz(q) && normalized.paperId && q.paperId === normalized.paperId)
+          );
+          if (idx >= 0) list[idx] = normalized;
+          else list.unshift(normalized);
+        }
+        const map = new Map<string, TelegramQuiz>();
+        for (const q of list) {
+          const key = getQuizDedupKey(q);
+          const existing = map.get(key);
+          if (!existing || (q.questions?.length || 0) >= (existing.questions?.length || 0)) {
+            map.set(key, q);
+          }
+        }
+        const deduplicated = Array.from(map.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        await kvSetJson(QUIZZES_KEY, deduplicated.slice(0, MAX_QUIZZES));
+      });
+    }
+  }
+
+  // Upsert unique authors in one batch pass
+  const seenAuthors = new Set<string>();
+  const now = new Date().toISOString();
+  for (const p of valid) {
+    const uid = normalizeUserId(p.userId || p.creatorPhone || "");
+    if (!uid || uid === "server" || seenAuthors.has(uid)) continue;
+    seenAuthors.add(uid);
     await saveServerUser({
-      id: cleanUserId,
-      phoneNumber: cleanUserId,
-      name: normalized.userName || "વિદ્યાર્થી",
-      createdAt: normalized.createdAt || now,
+      id: uid,
+      phoneNumber: uid,
+      name: p.userName || "વિદ્યાર્થી",
+      createdAt: p.createdAt || now,
       lastActive: now,
     }).catch(() => {});
   }
 
-  return normalized;
+  return valid;
+};
+
+export const saveServerPaper = async (paper: Paper): Promise<Paper> => {
+  if (!paper || !paper.id) {
+    throw new Error("Invalid paper");
+  }
+  const [saved] = await saveServerPapersBatch([paper]);
+  return saved;
 };
 
 export const deleteServerPaperRecord = async (

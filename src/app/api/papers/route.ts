@@ -3,6 +3,7 @@ import {
   getAllServerQuizzes,
   getAllServerPapers,
   saveServerPaper,
+  saveServerPapersBatch,
   deleteServerQuiz,
   deleteServerPaperRecord,
   getServerQuizByCode,
@@ -113,6 +114,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Ultra-fast metadata mode for client delta sync (excludes heavy question arrays)
+    if (req.nextUrl.searchParams.get("meta") === "1") {
+      const meta = papers.map((p) => ({
+        id: p.id,
+        userId: p.userId,
+        testCode: p.testCode,
+        updatedAt: p.updatedAt,
+        questionCount: p.questions?.length || 0,
+      }));
+      return NextResponse.json({ ok: true, meta, total: meta.length });
+    }
+
     // Payload-safe auto-chunking so Vercel never hits 4.5MB FUNCTION_PAYLOAD_TOO_LARGE
     // even when 50–200+ large exams exist in Supabase.
     const MAX_RESPONSE_BYTES = 3_200_000;
@@ -154,7 +167,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const paper: Paper = await req.json();
+    const body = await req.json();
+
+    if (body && Array.isArray(body.papers)) {
+      const saved = await saveServerPapersBatch(body.papers, {
+        alsoSyncQuizzes: Boolean(body.alsoSyncQuizzes ?? true),
+      });
+      return NextResponse.json({ ok: true, count: saved.length });
+    }
+
+    const paper: Paper = body;
     if (!paper || !paper.id) {
       return NextResponse.json(
         { ok: false, error: "Invalid paper payload" },

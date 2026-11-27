@@ -4,7 +4,7 @@ import {
   getAllServerQuizzes,
   getAllServerPapers,
   saveServerQuiz,
-  saveServerPaper,
+  saveServerPapersBatch,
   saveServerUser,
   normalizeUserId,
 } from "@/lib/serverStorage";
@@ -63,35 +63,31 @@ const readRedisKeyRaw = async (
 const importItemsToSupabase = async (
   items: any[]
 ): Promise<{ quizzesImported: number; papersImported: number; usersImported: number }> => {
-  let quizzesImported = 0;
-  let papersImported = 0;
+  const papersToBatch: Paper[] = [];
+  const extraSubsetQuizzes: TelegramQuiz[] = [];
   const usersSeen = new Set<string>();
+  const now = new Date().toISOString();
 
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
 
-    // Supports both TelegramQuiz ({ code, questions }) and Paper ({ id, testCode, questions })
     const code = String(item.code || item.testCode || "").trim().toUpperCase();
     const questions = Array.isArray(item.questions) ? item.questions : [];
     const uid = normalizeUserId(String(item.creatorPhone || item.userId || ""));
     const userName = String(item.createdBy || item.userName || "શિક્ષક / વિદ્યાર્થી");
-    const now = new Date().toISOString();
+    if (uid && uid !== "server") usersSeen.add(uid);
 
-    if (uid && uid !== "server" && !usersSeen.has(uid)) {
-      usersSeen.add(uid);
-      await saveServerUser({
-        id: uid,
-        phoneNumber: uid,
-        name: userName,
-        createdAt: item.createdAt || now,
-        lastActive: item.updatedAt || item.createdAt || now,
-      }).catch(() => {});
-    }
+    const pid = String(item.paperId || item.id || "");
+    const isSubset =
+      Boolean(item.setMeta) ||
+      Boolean(item.parentPaperId) ||
+      pid.includes("::set_") ||
+      pid.startsWith("sched_");
 
-    if (code && questions.length > 0) {
-      const quiz: TelegramQuiz = {
+    if (isSubset && code && questions.length > 0) {
+      extraSubsetQuizzes.push({
         code,
-        paperId: String(item.paperId || item.id || `server_${code}`),
+        paperId: pid || `server_${code}`,
         parentPaperId: item.parentPaperId,
         setMeta: item.setMeta,
         title: String(item.title || `મોક ટેસ્ટ [${code}]`),
@@ -101,21 +97,9 @@ const importItemsToSupabase = async (
         createdBy: userName,
         creatorPhone: uid || "server",
         createdAt: item.createdAt || now,
-      };
-      await saveServerQuiz(quiz);
-      quizzesImported++;
-    }
-
-    // Master papers only (skip split sets & scheduled clones)
-    const pid = String(item.paperId || item.id || "");
-    const isSubset =
-      Boolean(item.setMeta) ||
-      Boolean(item.parentPaperId) ||
-      pid.includes("::set_") ||
-      pid.startsWith("sched_");
-
-    if (!isSubset && (item.id || code)) {
-      const paper: Paper = {
+      });
+    } else if (!isSubset && (item.id || code)) {
+      papersToBatch.push({
         id: String(item.paperId || item.id || `server_${code}`),
         userId: uid || String(item.userId || ""),
         creatorPhone: uid || String(item.creatorPhone || ""),
@@ -132,10 +116,21 @@ const importItemsToSupabase = async (
         questions,
         createdAt: item.createdAt || now,
         updatedAt: item.updatedAt || item.createdAt || now,
-      };
-      await saveServerPaper(paper);
-      papersImported++;
+      });
     }
+  }
+
+  let papersImported = 0;
+  let quizzesImported = 0;
+  if (papersToBatch.length > 0) {
+    const saved = await saveServerPapersBatch(papersToBatch, { alsoSyncQuizzes: true });
+    papersImported = saved.length;
+    quizzesImported = saved.filter((p) => p.testCode && (p.questions?.length || 0) > 0).length;
+  }
+
+  for (const sq of extraSubsetQuizzes) {
+    await saveServerQuiz(sq);
+    quizzesImported++;
   }
 
   return { quizzesImported, papersImported, usersImported: usersSeen.size };

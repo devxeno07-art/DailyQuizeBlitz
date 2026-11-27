@@ -91,7 +91,7 @@ const warnIfEphemeral = (): void => {
 // Supabase REST KV Backend (`public.app_settings`)
 // ==========================================
 
-const SB_CHUNK_SIZE = 700_000; // ~700KB per row keeps Supabase REST fast & safe
+const SB_CHUNK_SIZE = 500_000; // ~500KB per row keeps Supabase PostgREST fast & reliable even at 50+ huge exams
 
 const sbKeyName = (key: string): string => `kv:${KEY_PREFIX}${key}`;
 const sbChunkName = (key: string, idx: number): string =>
@@ -192,7 +192,7 @@ const supabaseSet = async (key: string, value: string): Promise<void> => {
     return;
   }
 
-  // Split large payloads (>700KB) into chunks so Supabase stays fast for 50–200+ exams
+  // Split large payloads (>500KB) into chunks so Supabase stays fast for 50–200+ exams
   const totalChunks = Math.ceil(value.length / SB_CHUNK_SIZE);
   const chunkRows: Array<{ key: string; value: string; updated_at: string }> = [];
   for (let i = 0; i < totalChunks; i++) {
@@ -203,9 +203,11 @@ const supabaseSet = async (key: string, value: string): Promise<void> => {
     });
   }
 
-  // Write chunks in batches of 3 rows to stay well under PostgREST body limits
+  // Upsert chunks individually (3 concurrent) so each PostgREST body stays <= 500KB
   for (let i = 0; i < chunkRows.length; i += 3) {
-    await supabaseUpsertBatch(chunkRows.slice(i, i + 3));
+    await Promise.all(
+      chunkRows.slice(i, i + 3).map((row) => supabaseUpsertBatch([row]))
+    );
   }
 
   // Commit manifest pointing to the newly written chunks

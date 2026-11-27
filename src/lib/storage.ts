@@ -512,41 +512,101 @@ export const lookupServerUser = async (
   }
 };
 
-export const syncUserPapersToServer = async (userId: string): Promise<void> => {
-  if (typeof window === "undefined" || !userId) return;
+export const syncUserPapersToServer = async (
+  userId: string,
+  syncAllBrowserPapers = false
+): Promise<number> => {
+  if (typeof window === "undefined" || !userId) return 0;
   const cleanId = normalizeClientUserId(userId);
-  const myLocal = getLocalPapers().filter(
-    (p) => normalizeClientUserId(p.userId) === cleanId
+  const allLocal = getLocalPapers();
+  const candidates = syncAllBrowserPapers
+    ? allLocal
+    : allLocal.filter((p) => normalizeClientUserId(p.userId) === cleanId);
+
+  if (candidates.length === 0) return 0;
+
+  // Fast lightweight metadata check (<5KB) so we skip already-synced papers
+  let serverMeta: Array<{
+    id: string;
+    testCode?: string;
+    updatedAt?: string;
+    questionCount?: number;
+  }> = [];
+
+  try {
+    const mRes = await fetch("/api/papers?meta=1", { cache: "no-store" });
+    if (mRes.ok) {
+      const mData = await mRes.json().catch(() => null);
+      if (mData?.ok && Array.isArray(mData.meta)) {
+        serverMeta = mData.meta;
+      }
+    }
+  } catch {
+    // Proceed with uploading candidates in batches if meta probe fails
+  }
+
+  const metaById = new Map(serverMeta.map((m) => [m.id, m]));
+  const metaByCode = new Map(
+    serverMeta
+      .filter((m) => m.testCode)
+      .map((m) => [String(m.testCode).toUpperCase(), m])
   );
-  for (const paper of myLocal) {
+
+  const toSync = candidates.filter((p) => {
+    const srv =
+      metaById.get(p.id) ||
+      (p.testCode ? metaByCode.get(p.testCode.toUpperCase()) : undefined);
+    if (!srv) return true;
+    const localQ = p.questions?.length || 0;
+    const srvQ = Number(srv.questionCount || 0);
+    if (localQ > srvQ) return true;
+    const localTs = new Date(p.updatedAt || p.createdAt || 0).getTime();
+    const srvTs = new Date(srv.updatedAt || 0).getTime();
+    return localTs > srvTs + 1000;
+  });
+
+  if (toSync.length === 0) return 0;
+
+  // Group into size-aware batches (~1.2MB max per POST, staying well under Vercel 4.5MB)
+  const batches: Paper[][] = [];
+  let currentBatch: Paper[] = [];
+  let currentBytes = 0;
+
+  for (const p of toSync) {
+    const size = JSON.stringify(p).length;
+    if (
+      currentBatch.length > 0 &&
+      (currentBytes + size > 1_200_000 || currentBatch.length >= 6)
+    ) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentBytes = 0;
+    }
+    currentBatch.push(p);
+    currentBytes += size;
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
+
+  let synced = 0;
+  for (const batch of batches) {
     try {
-      await fetch("/api/papers", {
+      const res = await fetch("/api/papers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(paper),
+        body: JSON.stringify({ papers: batch, alsoSyncQuizzes: true }),
       });
-      if (paper.questions && paper.questions.length > 0 && paper.testCode) {
-        const tQuiz: TelegramQuiz = {
-          code: paper.testCode,
-          paperId: paper.id,
-          title: paper.title,
-          subject: paper.subject || paper.category,
-          timePerQuestion: 30,
-          questions: paper.questions,
-          createdBy: paper.userName,
-          creatorPhone: cleanId,
-          createdAt: paper.updatedAt || new Date().toISOString(),
-        };
-        await fetch("/api/telegram/save-quiz", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(tQuiz),
-        }).catch(() => {});
+      if (res.ok) {
+        synced += batch.length;
       }
     } catch {
-      // Best-effort background sync
+      // Continue remaining batches cleanly
     }
   }
+
+  if (synced > 0) {
+    window.dispatchEvent(new CustomEvent("mcq_papers_updated"));
+  }
+  return synced;
 };
 
 export const toggleUserLibraryAccess = async (userId: string): Promise<boolean> => {
