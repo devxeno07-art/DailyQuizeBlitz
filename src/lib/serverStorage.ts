@@ -271,7 +271,12 @@ export const getServerQuizByCode = async (
   if (match) return match;
 
   // 6. Resilient fallback to per-paper store (kv:gsrtc:paper_*.json)
-  const fallbackPaper = await getPaperByIdOrCodeFromServer(raw, clean).catch(() => null);
+  // Pass allowQuizFallback = false to prevent mutual recursion with getPaperByIdOrCodeFromServer.
+  const fallbackPaper = await getPaperByIdOrCodeFromServer(
+    raw,
+    clean,
+    false
+  ).catch(() => null);
   if (fallbackPaper && Array.isArray(fallbackPaper.questions) && fallbackPaper.questions.length > 0) {
     return {
       code: String(fallbackPaper.testCode || clean).trim().toUpperCase(),
@@ -1012,12 +1017,13 @@ export const getServerPapersMeta = async (): Promise<PaperMetaRecord[]> => {
 
 export const getPaperByIdOrCodeFromServer = async (
   paperId?: string,
-  testCode?: string
+  testCode?: string,
+  allowQuizFallback = true
 ): Promise<Paper | null> => {
   const pid = String(paperId || "").trim();
   const code = String(testCode || "").trim().toUpperCase();
 
-  if (pid) {
+  if (pid && (!code || pid.toUpperCase() !== code)) {
     const direct = await kvGetJson<Paper | null>(paperItemKey(pid), null);
     if (direct && direct.id) return direct;
   }
@@ -1032,29 +1038,31 @@ export const getPaperByIdOrCodeFromServer = async (
       if (direct && direct.id) return direct;
     }
 
-    const quiz = await getServerQuizByCode(code);
-    if (quiz) {
-      const uid = normalizeUserId(quiz.creatorPhone || "");
-      return {
-        id: quiz.paperId || `server_${quiz.code}`,
-        userId: uid,
-        creatorPhone: uid,
-        userName: quiz.createdBy || "શિક્ષક / વિદ્યાર્થી",
-        title: quiz.title,
-        subject: quiz.subject || "સામાન્ય જ્ઞાન",
-        category: "સ્પર્ધાત્મક પરીક્ષા",
-        targetQuestions: quiz.questions?.length || 0,
-        questionCount: quiz.questions?.length || 0,
-        timeLimitMinutes: Math.max(
-          10,
-          Math.ceil(((quiz.questions?.length || 20) * (quiz.timePerQuestion || 30)) / 60)
-        ),
-        isPublic: true,
-        testCode: quiz.code,
-        questions: Array.isArray(quiz.questions) ? quiz.questions : [],
-        createdAt: quiz.createdAt || new Date().toISOString(),
-        updatedAt: quiz.createdAt || new Date().toISOString(),
-      };
+    if (allowQuizFallback) {
+      const quiz = await getServerQuizByCode(code);
+      if (quiz) {
+        const uid = normalizeUserId(quiz.creatorPhone || "");
+        return {
+          id: quiz.paperId || `server_${quiz.code}`,
+          userId: uid,
+          creatorPhone: uid,
+          userName: quiz.createdBy || "શિક્ષક / વિદ્યાર્થી",
+          title: quiz.title,
+          subject: quiz.subject || "સામાન્ય જ્ઞાન",
+          category: "સ્પર્ધાત્મક પરીક્ષા",
+          targetQuestions: quiz.questions?.length || 0,
+          questionCount: quiz.questions?.length || 0,
+          timeLimitMinutes: Math.max(
+            10,
+            Math.ceil(((quiz.questions?.length || 20) * (quiz.timePerQuestion || 30)) / 60)
+          ),
+          isPublic: true,
+          testCode: quiz.code,
+          questions: Array.isArray(quiz.questions) ? quiz.questions : [],
+          createdAt: quiz.createdAt || new Date().toISOString(),
+          updatedAt: quiz.createdAt || new Date().toISOString(),
+        };
+      }
     }
   }
 

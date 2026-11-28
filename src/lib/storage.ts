@@ -192,17 +192,14 @@ export const saveTelegramQuiz = async (quiz: TelegramQuiz): Promise<void> => {
   // immediately. Await it so a /quiz command sent right after code generation
   // always finds the quiz.
   if (typeof window !== "undefined") {
-    try {
-      const res = await fetch("/api/telegram/save-quiz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(quiz),
-      });
-      if (!res.ok) {
-        console.warn("Could not sync quiz to server", res.status);
-      }
-    } catch (e) {
-      console.warn("Could not sync quiz to server", e);
+    const res = await fetch("/api/telegram/save-quiz", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(quiz),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData?.error || `Could not sync quiz to server (${res.status})`);
     }
   }
 
@@ -237,7 +234,7 @@ export const getTelegramQuizByCode = async (code: string): Promise<TelegramQuiz 
       creatorPhone: matchingPaper.userId,
       createdAt: matchingPaper.updatedAt || new Date().toISOString(),
     };
-    saveTelegramQuiz(directQuiz);
+    saveTelegramQuiz(directQuiz).catch(() => {});
     return directQuiz;
   }
 
@@ -840,7 +837,9 @@ export const savePaper = async (
       creatorPhone: updatedPaper.userId,
       createdAt: now,
     };
-    await saveTelegramQuiz(tQuiz);
+    await saveTelegramQuiz(tQuiz).catch((err) => {
+      console.warn("Could not mirror quiz to server:", err);
+    });
   }
 
   const localUsers = getLocalUsers();

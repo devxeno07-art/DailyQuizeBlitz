@@ -57,6 +57,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
 
   // Generated Result State
   const [generatedQuiz, setGeneratedQuiz] = useState<TelegramQuiz | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedMessage, setCopiedMessage] = useState(false);
   const [copiedQuizBotFormat, setCopiedQuizBotFormat] = useState(false);
@@ -191,108 +192,116 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
       : Math.min(Number(questionCount) || activePaper?.questions?.length || 0, activePaper?.questions?.length || 0);
 
   const handleGenerateCode = async () => {
+    if (isGenerating) return;
     if (!activePaper || !activePaper.questions || activePaper.questions.length === 0) {
       alert("પસંદ કરેલા પેપરમાં ઓછામાં ઓછો ૧ પ્રશ્ન હોવો જરૂરી છે.");
       return;
     }
 
-    let finalQuestions = [...activePaper.questions];
-    let setMeta: TelegramQuiz["setMeta"] | undefined;
-    let finalTitle = testTitle.trim() || activePaper.title;
+    setIsGenerating(true);
+    try {
+      let finalQuestions = [...activePaper.questions];
+      let setMeta: TelegramQuiz["setMeta"] | undefined;
+      let finalTitle = testTitle.trim() || activePaper.title;
 
-    if (questionCount === "sets" && activeSetObj) {
-      finalQuestions = [...activeSetObj.questions];
-      if (selectionMode === "random") {
-        finalQuestions = finalQuestions
-          .map((q) => ({ q, sort: Math.random() }))
-          .sort((a, b) => a.sort - b.sort)
-          .map(({ q }) => q);
-      }
-      setMeta = {
-        setNumber: activeSetObj.setNumber,
-        totalSets: activeSetObj.totalSets,
-        setSize: activeSetObj.setSize,
-        startQuestion: activeSetObj.startQuestion,
-        endQuestion: activeSetObj.endQuestion,
-      };
-      if (!finalTitle.includes(`[Set `)) {
-        finalTitle = `${finalTitle} [${activeSetObj.label}]`;
-      }
-    } else {
-      // If random mode is chosen, shuffle questions
-      if (selectionMode === "random") {
-        finalQuestions = finalQuestions
-          .map((q) => ({ q, sort: Math.random() }))
-          .sort((a, b) => a.sort - b.sort)
-          .map(({ q }) => q);
-      }
-
-      // If a limited number of questions is chosen, slice
-      if (questionCount !== "all") {
-        const limit = Math.min(finalQuestions.length, Math.max(1, Number(questionCount) || finalQuestions.length));
-        finalQuestions = finalQuestions.slice(0, limit);
-      }
-    }
-
-    // Generate readable, memorable test code (e.g. GPSC-4921, EXAM-4921 or TEST-8391)
-    const randomDigits = Math.floor(1000 + Math.random() * 9000);
-    let prefix = "TEST";
-    if (activePaper.category) {
-      const clean = activePaper.category.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
-      if (clean.length >= 3) {
-        prefix = clean;
-      }
-    }
-    const quizCode = `${prefix}-${randomDigits}`;
-    const isSubset = Boolean(setMeta) || (questionCount !== "all" && finalQuestions.length < activePaper.questions.length);
-
-    const newQuiz: TelegramQuiz = {
-      code: quizCode,
-      paperId: setMeta
-        ? `${activePaper.id}::set_${setMeta.setSize}_${setMeta.setNumber}`
-        : isSubset
-        ? `${activePaper.id}::set_${finalQuestions.length}_${randomDigits}`
-        : activePaper.id,
-      parentPaperId: isSubset ? activePaper.id : undefined,
-      setMeta,
-      title: finalTitle,
-      subject: testSubject.trim() || activePaper.subject,
-      timePerQuestion: Number(timePerQuestion) || 30,
-      questions: finalQuestions,
-      createdBy: user.name,
-      creatorPhone: user.phoneNumber,
-      createdAt: new Date().toISOString(),
-    };
-
-    await saveTelegramQuiz(newQuiz);
-    setGeneratedQuiz(newQuiz);
-
-    if (setMeta) {
-      try {
-        const res = await fetch("/api/papers/sets", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "record_quiz_set",
-            paperId: activePaper.id,
-            testCode: activePaper.testCode,
-            setNumber: setMeta.setNumber,
-            setSize: setMeta.setSize,
-            totalSets: setMeta.totalSets,
-            startQuestion: setMeta.startQuestion,
-            endQuestion: setMeta.endQuestion,
-            quizCode: newQuiz.code,
-            dispatchedBy: user.name,
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.record) {
-          setSetDispatches((prev) => [
-            data.record,
-            ...prev.filter((r) => r.id !== data.record.id),
-          ]);
+      if (questionCount === "sets" && activeSetObj) {
+        finalQuestions = [...activeSetObj.questions];
+        if (selectionMode === "random") {
+          finalQuestions = finalQuestions
+            .map((q) => ({ q, sort: Math.random() }))
+            .sort((a, b) => a.sort - b.sort)
+            .map(({ q }) => q);
         }
-      } catch {}
+        setMeta = {
+          setNumber: activeSetObj.setNumber,
+          totalSets: activeSetObj.totalSets,
+          setSize: activeSetObj.setSize,
+          startQuestion: activeSetObj.startQuestion,
+          endQuestion: activeSetObj.endQuestion,
+        };
+        if (!finalTitle.includes(`[Set `)) {
+          finalTitle = `${finalTitle} [${activeSetObj.label}]`;
+        }
+      } else {
+        // If random mode is chosen, shuffle questions
+        if (selectionMode === "random") {
+          finalQuestions = finalQuestions
+            .map((q) => ({ q, sort: Math.random() }))
+            .sort((a, b) => a.sort - b.sort)
+            .map(({ q }) => q);
+        }
+
+        // If a limited number of questions is chosen, slice
+        if (questionCount !== "all") {
+          const limit = Math.min(finalQuestions.length, Math.max(1, Number(questionCount) || finalQuestions.length));
+          finalQuestions = finalQuestions.slice(0, limit);
+        }
+      }
+
+      // Generate readable, memorable test code (e.g. GPSC-4921, EXAM-4921 or TEST-8391)
+      const randomDigits = Math.floor(1000 + Math.random() * 9000);
+      let prefix = "TEST";
+      if (activePaper.category) {
+        const clean = activePaper.category.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
+        if (clean.length >= 3) {
+          prefix = clean;
+        }
+      }
+      const quizCode = `${prefix}-${randomDigits}`;
+      const isSubset = Boolean(setMeta) || (questionCount !== "all" && finalQuestions.length < activePaper.questions.length);
+
+      const newQuiz: TelegramQuiz = {
+        code: quizCode,
+        paperId: setMeta
+          ? `${activePaper.id}::set_${setMeta.setSize}_${setMeta.setNumber}`
+          : isSubset
+          ? `${activePaper.id}::set_${finalQuestions.length}_${randomDigits}`
+          : `${activePaper.id}::gen_${quizCode}`,
+        parentPaperId: activePaper.id,
+        setMeta,
+        title: finalTitle,
+        subject: testSubject.trim() || activePaper.subject,
+        timePerQuestion: Number(timePerQuestion) || 30,
+        questions: finalQuestions,
+        createdBy: user.name,
+        creatorPhone: user.phoneNumber,
+        createdAt: new Date().toISOString(),
+      };
+
+      await saveTelegramQuiz(newQuiz);
+      setGeneratedQuiz(newQuiz);
+
+      if (setMeta) {
+        try {
+          const res = await fetch("/api/papers/sets", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "record_quiz_set",
+              paperId: activePaper.id,
+              testCode: activePaper.testCode,
+              setNumber: setMeta.setNumber,
+              setSize: setMeta.setSize,
+              totalSets: setMeta.totalSets,
+              startQuestion: setMeta.startQuestion,
+              endQuestion: setMeta.endQuestion,
+              quizCode: newQuiz.code,
+              dispatchedBy: user.name,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.record) {
+            setSetDispatches((prev) => [
+              data.record,
+              ...prev.filter((r) => r.id !== data.record.id),
+            ]);
+          }
+        } catch {}
+      }
+    } catch (err: any) {
+      alert(err?.message || "ટેલિગ્રામ ટેસ્ટ કોડ બનાવવામાં ભૂલ આવી. કૃપા કરીને ફરી પ્રયાસ કરો.");
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -742,12 +751,14 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({
             {/* Generate Button */}
             <button
               onClick={handleGenerateCode}
-              disabled={!activePaper || !activePaper.questions || activePaper.questions.length === 0}
+              disabled={isGenerating || !activePaper || !activePaper.questions || activePaper.questions.length === 0}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center justify-center space-x-1.5 disabled:opacity-50 transition-all transform active:scale-[0.98]"
             >
-              <Sparkles className="w-4 h-4 text-amber-300" />
+              <Sparkles className={`w-4 h-4 text-amber-300 ${isGenerating ? "animate-spin" : ""}`} />
               <span>
-                {questionCount === "sets" && activeSetObj
+                {isGenerating
+                  ? "ટેલિગ્રામ ટેસ્ટ કોડ બની રહ્યો છે..."
+                  : questionCount === "sets" && activeSetObj
                   ? `Set ${activeSetObj.setNumber} (Q${activeSetObj.startQuestion}-${activeSetObj.endQuestion}) નો ટેસ્ટ કોડ બનાવો`
                   : "ટેલિગ્રામ ટેસ્ટ કોડ બનાવો (Generate Test Code)"}
               </span>
