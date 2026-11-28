@@ -624,7 +624,7 @@ const acquireSupabaseLock = async (
         updated_at: new Date().toISOString(),
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (ins.status === 201 || ins.status === 200) return true;
@@ -667,8 +667,19 @@ export const acquireRedisLock = async (
   const fullKey = `${KEY_PREFIX}lock:${lockKey}`;
 
   if (HAS_SUPABASE) {
-    const sbResult = await acquireSupabaseLock(sbLockKey, validTtl);
+    let sbResult = await acquireSupabaseLock(sbLockKey, validTtl);
+    if (sbResult === null) {
+      // Retry once before failing closed for critical locks
+      sbResult = await acquireSupabaseLock(sbLockKey, validTtl);
+    }
     if (sbResult !== null) return sbResult;
+    const isCritical =
+      lockKey.startsWith("sched_") ||
+      lockKey.startsWith("group_dispatch:") ||
+      lockKey.startsWith("start_group_quiz:") ||
+      lockKey.startsWith("start_quiz:") ||
+      lockKey.startsWith("poll_send:");
+    if (isCritical) return false;
   }
 
   if (isRedisHealthy()) {

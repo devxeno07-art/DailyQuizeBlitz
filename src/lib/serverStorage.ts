@@ -23,6 +23,8 @@ import {
 
 const BOT_CONFIG_KEY = "bot_config.json";
 const QUIZZES_KEY = "quizzes.json";
+const quizItemKey = (code: string): string =>
+  `quiz_${String(code || "").trim().toUpperCase()}.json`;
 const SESSIONS_KEY = "sessions.json";
 const SCHEDULES_KEY = "schedules.json";
 const ATTEMPTS_KEY = "attempts.json";
@@ -150,6 +152,14 @@ export const saveServerQuiz = async (quiz: TelegramQuiz): Promise<void> => {
   const normalized = normalizeQuiz(quiz);
   const normalizedIsSubset = isSetOrScheduledQuiz(normalized);
 
+  // Always persist per-code fast record (~50ms) so scheduled & set runs finish <1s
+  await kvSetJson(quizItemKey(normalized.code), normalized);
+
+  // Ephemeral scheduled/set runs don't need to rewrite the 3.5MB quizzes.json archive
+  if (normalizedIsSubset) {
+    return;
+  }
+
   await withDistributedLock("quizzes_write", 15000, async () => {
     await withKeyLock(QUIZZES_KEY, async () => {
       const all = await kvGetJsonStrict<TelegramQuiz[]>(QUIZZES_KEY, []);
@@ -212,6 +222,19 @@ export const getServerQuizByCode = async (
     .toUpperCase();
 
   if (!clean) return null;
+
+  // 0. Ultra-fast direct per-code lookup (scheduled, set, & recent quizzes)
+  const directQuiz = await kvGetJson<TelegramQuiz | null>(quizItemKey(clean), null).catch(() => null);
+  if (directQuiz && Array.isArray(directQuiz.questions) && directQuiz.questions.length > 0) {
+    return directQuiz;
+  }
+  const cleanWithPrefix = clean.startsWith("TEST-") ? clean : `TEST-${clean}`;
+  if (cleanWithPrefix !== clean) {
+    const prefixedQuiz = await kvGetJson<TelegramQuiz | null>(quizItemKey(cleanWithPrefix), null).catch(() => null);
+    if (prefixedQuiz && Array.isArray(prefixedQuiz.questions) && prefixedQuiz.questions.length > 0) {
+      return prefixedQuiz;
+    }
+  }
 
   const all = await getAllServerQuizzes();
 

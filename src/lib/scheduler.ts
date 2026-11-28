@@ -238,30 +238,30 @@ export const buildQuizFromSchedule = async (
   schedule: ScheduledDailyTest
 ): Promise<TelegramQuiz | null> => {
   let pool: TelegramQuiz[] = [];
-  let quizzes: TelegramQuiz[] = [];
 
   if (schedule.mode === "specific_test") {
-    const [directPaper, loadedQuizzes] = await Promise.all([
-      getPaperByIdOrCodeFromServer(
-        schedule.specificPaperId,
-        schedule.specificTestCode
-      ).catch(() => null),
-      getAllServerQuizzes().catch(() => [] as TelegramQuiz[]),
-    ]);
-    quizzes = loadedQuizzes;
+    const directPaper = await getPaperByIdOrCodeFromServer(
+      schedule.specificPaperId,
+      schedule.specificTestCode
+    ).catch(() => null);
+
     if (directPaper && Array.isArray(directPaper.questions) && directPaper.questions.length > 0) {
-      pool = mergeQuizAndPaperSources(quizzes, [directPaper]);
+      pool = [paperToQuizAdapter(directPaper)];
     } else {
-      const papers = await getAllServerPapers().catch(() => [] as Paper[]);
-      pool = mergeQuizAndPaperSources(quizzes, papers);
+      const [loadedQuizzes, papers] = await Promise.all([
+        getAllServerQuizzes().catch(() => [] as TelegramQuiz[]),
+        getAllServerPapers().catch(() => [] as Paper[]),
+      ]);
+      pool = mergeQuizAndPaperSources(loadedQuizzes, papers);
     }
   } else {
-    const [loadedQuizzes, papers] = await Promise.all([
-      getAllServerQuizzes().catch(() => [] as TelegramQuiz[]),
-      getAllServerPapers().catch(() => [] as Paper[]),
-    ]);
-    quizzes = loadedQuizzes;
-    pool = mergeQuizAndPaperSources(quizzes, papers);
+    const papers = await getAllServerPapers().catch(() => [] as Paper[]);
+    if (papers.length > 0) {
+      pool = mergeQuizAndPaperSources([], papers);
+    } else {
+      const loadedQuizzes = await getAllServerQuizzes().catch(() => [] as TelegramQuiz[]);
+      pool = mergeQuizAndPaperSources(loadedQuizzes, []);
+    }
   }
 
   const candidates = collectCandidateQuestions(pool, schedule);
@@ -312,7 +312,7 @@ export const buildQuizFromSchedule = async (
     questionNumber: index + 1,
   }));
 
-  const existingCodes = new Set(quizzes.map((q) => q.code.toUpperCase()));
+  const existingCodes = new Set(pool.map((q) => q.code.toUpperCase()));
   const prefix =
     schedule.mode === "specific_test"
       ? (schedule.specificTestCode?.replace(/-\d+$/, "").toUpperCase() || "TEST")
@@ -398,71 +398,129 @@ export const dispatchSchedule = async (
     };
   }
 
-  const quiz = await buildQuizFromSchedule(schedule);
-  if (!quiz) {
+  const schedLockKey = `sched_dispatch:${schedule.id}`;
+  const groupLockKey = `group_dispatch:${targetGroupId}`;
+  const gotSchedLock = await acquireRedisLock(schedLockKey, 45_000);
+  if (!gotSchedLock) {
     return {
       ok: false,
-      error: "પૂરતા પ્રશ્નો ઉપલબ્ધ નથી. પહેલા ટેસ્ટ/પેપર ડિજિટાઇઝ કરો.",
+      error: "આ શેડ્યુલ પહેલેથી જ ચાલુ થઈ રહ્યું છે — કૃપા કરીને થોડી સેકન્ડ રાહ જુઓ.",
     };
   }
 
-  const result = await dispatchQuizToChat({
-    quiz,
-    chatId: targetGroupId,
-    chatTitle: quiz.title,
-    hostOrigin: options.hostOrigin,
-    startedBy: { id: "0", name: "Admin Scheduler" },
-  });
-
-  if (!result.ok) {
-    return { ok: false, error: result.error || "ટેસ્ટ શરૂ થઈ શકી નહીં." };
+  const gotGroupLock = await acquireRedisLock(groupLockKey, 25_000);
+  if (!gotGroupLock) {
+    await releaseRedisLock(schedLockKey).catch(() => {});
+    return {
+      ok: false,
+      error: "આ ગ્રૂપમાં અન્ય ક્વિઝ શરૂ થઈ રહી છે — થોડી સેકન્ડ પછી પ્રયાસ કરો.",
+    };
   }
 
-  const now = new Date();
-  const { day } = getIstParts(now);
-  schedule.lastRunAt = now.toISOString();
-  schedule.lastRunDay = day;
-  schedule.lastGeneratedCode = quiz.code;
+  try {
+    // Re-read fresh state inside the distributed lock to eliminate cron + manual double-starts
+    const [freshSchedules, sessions] = await Promise.all([
+      getAllServerSchedules().catch(() => [] as ScheduledDailyTest[]),
+      getAllSessions().catch(() => []),
+    ]);
 
-  if (schedule.useSetProgression && quiz.setMeta) {
-    const keyBase =
-      schedule.specificTestCode?.toUpperCase() ||
-      quiz.parentPaperId ||
-      schedule.specificPaperId ||
-      schedule.id;
+    const latestSched = freshSchedules.find((s) => s.id === schedule.id);
+    const activeTarget = latestSched ? { ...schedule, ...latestSched } : schedule;
 
-    await savePaperSetDispatch({
-      id: `${keyBase}::${quiz.setMeta.setSize}::${quiz.setMeta.setNumber}`,
-      paperId: quiz.parentPaperId || schedule.specificPaperId || keyBase,
-      testCode: schedule.specificTestCode?.toUpperCase(),
-      setSize: quiz.setMeta.setSize,
-      setNumber: quiz.setMeta.setNumber,
-      totalSets: quiz.setMeta.totalSets,
-      startQuestion: quiz.setMeta.startQuestion,
-      endQuestion: quiz.setMeta.endQuestion,
-      quizCode: quiz.code,
-      groupId: targetGroupId,
-      dispatchedAt: now.toISOString(),
-      dispatchedBy: "Daily Scheduler",
+    if (activeTarget.lastRunAt) {
+      const sinceLastMs = Date.now() - new Date(activeTarget.lastRunAt).getTime();
+      if (sinceLastMs >= 0 && sinceLastMs < 180_000) {
+        return {
+          ok: false,
+          error: `આ ટેસ્ટ થોડી જ સેકન્ડ પહેલા (${activeTarget.lastGeneratedCode || "Live"}) શરૂ થઈ ચૂકી છે.`,
+        };
+      }
+    }
+
+    const activeGroupSess = sessions.find((s) => {
+      if (String(s.chatId) !== targetGroupId || s.status !== "active") return false;
+      const totalQ = s.quiz?.questions?.length || 0;
+      if (s.polls.length >= totalQ) return false;
+      const lastPoll = s.polls[s.polls.length - 1];
+      const lastActivity = new Date(lastPoll?.sentAt || s.startedAt).getTime();
+      return Date.now() - lastActivity < 15 * 60 * 1000;
+    });
+    if (activeGroupSess) {
+      return {
+        ok: false,
+        error: `આ ગ્રૂપમાં પહેલેથી જ "${activeGroupSess.quiz?.title || activeGroupSess.code}" ટેસ્ટ લાઈવ ચાલી રહી છે. એક સમયે ફક્ત એક જ ટેસ્ટ ચાલી શકે.`,
+      };
+    }
+
+    const quiz = await buildQuizFromSchedule(activeTarget);
+    if (!quiz) {
+      return {
+        ok: false,
+        error: "પૂરતા પ્રશ્નો ઉપલબ્ધ નથી. પહેલા ટેસ્ટ/પેપર ડિજિટાઇઝ કરો.",
+      };
+    }
+
+    const result = await dispatchQuizToChat({
+      quiz,
+      chatId: targetGroupId,
+      chatTitle: quiz.title,
+      hostOrigin: options.hostOrigin,
+      startedBy: { id: "0", name: "Admin Scheduler" },
     });
 
-    schedule.currentSetIndex =
-      quiz.setMeta.setNumber >= quiz.setMeta.totalSets
-        ? 0
-        : quiz.setMeta.setNumber;
-    schedule.totalPaperQuestions =
-      quiz.setMeta.totalSets * quiz.setMeta.setSize;
+    if (!result.ok) {
+      return { ok: false, error: result.error || "ટેસ્ટ શરૂ થઈ શકી નહીં." };
+    }
+
+    const now = new Date();
+    const { day } = getIstParts(now);
+    activeTarget.lastRunAt = now.toISOString();
+    activeTarget.lastRunDay = day;
+    activeTarget.lastGeneratedCode = quiz.code;
+
+    if (activeTarget.useSetProgression && quiz.setMeta) {
+      const keyBase =
+        activeTarget.specificTestCode?.toUpperCase() ||
+        quiz.parentPaperId ||
+        activeTarget.specificPaperId ||
+        activeTarget.id;
+
+      await savePaperSetDispatch({
+        id: `${keyBase}::${quiz.setMeta.setSize}::${quiz.setMeta.setNumber}`,
+        paperId: quiz.parentPaperId || activeTarget.specificPaperId || keyBase,
+        testCode: activeTarget.specificTestCode?.toUpperCase(),
+        setSize: quiz.setMeta.setSize,
+        setNumber: quiz.setMeta.setNumber,
+        totalSets: quiz.setMeta.totalSets,
+        startQuestion: quiz.setMeta.startQuestion,
+        endQuestion: quiz.setMeta.endQuestion,
+        quizCode: quiz.code,
+        groupId: targetGroupId,
+        dispatchedAt: now.toISOString(),
+        dispatchedBy: "Daily Scheduler",
+      });
+
+      activeTarget.currentSetIndex =
+        quiz.setMeta.setNumber >= quiz.setMeta.totalSets
+          ? 0
+          : quiz.setMeta.setNumber;
+      activeTarget.totalPaperQuestions =
+        quiz.setMeta.totalSets * quiz.setMeta.setSize;
+    }
+
+    await saveServerSchedule(activeTarget);
+
+    // Clean up any pending upcoming test reminder in this group now that test started
+    const token = botConfig.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+    if (token) {
+      await clearGroupUpcomingReminder(token, targetGroupId).catch(() => {});
+    }
+
+    return { ok: true, code: quiz.code };
+  } finally {
+    await releaseRedisLock(groupLockKey).catch(() => {});
+    await releaseRedisLock(schedLockKey).catch(() => {});
   }
-
-  await saveServerSchedule(schedule);
-
-  // Clean up any pending upcoming test reminder in this group now that test started
-  const token = botConfig.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
-  if (token) {
-    await clearGroupUpcomingReminder(token, targetGroupId).catch(() => {});
-  }
-
-  return { ok: true, code: quiz.code };
 };
 
 export const runDueSchedules = async (

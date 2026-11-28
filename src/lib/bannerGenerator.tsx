@@ -25,6 +25,19 @@ const formatParticipantTime = (
   return `${m}m ${s < 10 ? "0" + s : s}s`;
 };
 
+const safeBannerText = (val: unknown, fallback = "User"): string => {
+  const mapped = String(val ?? "")
+    .replace(/[∑Σ]/g, "E")
+    .replace(/[⌬]/g, "O")
+    .replace(/[⌿]/g, "/")
+    // Keep ASCII, Latin-1, Gujarati (\u0A80-\u0AFF), Devanagari (\u0900-\u097F), dashes/dots;
+    // strip unsupported math/symbol/emoji codepoints that trigger @vercel/og Google Font 400 errors.
+    .replace(/[^\u0020-\u00FF\u0900-\u097F\u0A80-\u0AFF\u2013\u2014\u2022\u2026]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return mapped || fallback;
+};
+
 const getRankerData = (
   p: TelegramParticipant | undefined,
   rank: number,
@@ -43,9 +56,11 @@ const getRankerData = (
     };
   }
 
-  const name = (p.name || "વિદ્યાર્થી").trim();
+  const name = safeBannerText(p.name, `User ${p.userId.slice(-4)}`);
   const initial = (name[0] || "U").toUpperCase();
-  const handle = p.username ? `@${p.username}` : `User ${p.userId.slice(-4)}`;
+  const handle = p.username
+    ? `@${safeBannerText(p.username, "user")}`
+    : `User ${p.userId.slice(-4)}`;
   const scoreText = `${p.score}/${totalQuestions}`;
   const timeText = formatParticipantTime(p);
   const pct = totalQuestions > 0 ? Math.round((p.score / totalQuestions) * 100) : 0;
@@ -90,9 +105,11 @@ export const generateTop3Banner = async (
     }
 
     const totalQuestions = session.quiz?.questions?.length || 0;
-    const rawTitle = session.quiz?.title || "MOCK TEST";
+    const rawTitle = safeBannerText(session.quiz?.title, "MOCK TEST");
     const title = rawTitle.toUpperCase();
-    const subject = session.quiz?.subject;
+    const subject = session.quiz?.subject
+      ? safeBannerText(session.quiz.subject, "MOCK TEST")
+      : undefined;
     const dateStr = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",

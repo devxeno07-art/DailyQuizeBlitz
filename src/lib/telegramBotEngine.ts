@@ -1022,13 +1022,42 @@ const startQuizSession = async (
     return { ok: false, error: "Quiz has no questions" };
   }
 
+  const groupStartLockKey = `start_group_quiz:${ctx.chatId}`;
+  const gotGroupLock = await acquireRedisLock(groupStartLockKey, 20_000);
+  if (!gotGroupLock) {
+    return { ok: false, error: "Another quiz is starting in this group right now" };
+  }
+
   const startLockKey = `start_quiz:${ctx.chatId}:${quiz.code.toUpperCase()}`;
   const gotStartLock = await acquireRedisLock(startLockKey, 15_000);
   if (!gotStartLock) {
+    await releaseRedisLock(groupStartLockKey).catch(() => {});
     return { ok: false, error: "Quiz start already in progress" };
   }
 
-  const existing = await getSession(quiz.code, ctx.chatId);
+  try {
+  const allSessions = await getAllSessions();
+  const activeInGroup = allSessions.find((s) => {
+    if (s.chatId !== ctx.chatId || s.status !== "active") return false;
+    const totalQ = s.quiz?.questions?.length || 0;
+    if (s.polls.length >= totalQ) return false;
+    const lastPoll = s.polls[s.polls.length - 1];
+    const lastTs = new Date(lastPoll?.sentAt || s.startedAt).getTime();
+    return Date.now() - lastTs < 15 * 60 * 1000;
+  });
+
+  if (activeInGroup) {
+    await sendMessage(
+      ctx,
+      `⏳ <b>આ ગ્રૂપમાં પહેલેથી જ એક ટેસ્ટ ચાલી રહી છે!</b>\n\n` +
+        `📝 <b>ટેસ્ટ:</b> ${escapeHtml(activeInGroup.quiz?.title || activeInGroup.code)}\n` +
+        `🔑 કોડ: <code>${escapeHtml(activeInGroup.code)}</code>\n` +
+        `👉 નવી ટેસ્ટ પહેલા આ ટેસ્ટ પૂરી થવા દો અથવા <code>/stop ${escapeHtml(activeInGroup.code)}</code> ચલાવો.`
+    );
+    return { ok: false, error: "Another quiz is already running in this group" };
+  }
+
+  const existing = allSessions.find((s) => s.id === sessionId(quiz.code, ctx.chatId)) || null;
   // Block re-runs for any unfinished session that already has polls in the
   // group (active OR partially failed). Re-sending would duplicate polls.
   if (
@@ -1142,6 +1171,10 @@ const startQuizSession = async (
   triggerQuizRunner(ctx.configuredAppUrl).catch(() => {});
 
   return { ok: true, session };
+  } finally {
+    await releaseRedisLock(startLockKey).catch(() => {});
+    await releaseRedisLock(groupStartLockKey).catch(() => {});
+  }
 };
 
 // ==========================================
